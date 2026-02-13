@@ -1,0 +1,7 @@
+{
+  "name": "DUTY MASTER - 2026",
+  "description": "A comprehensive teacher duty management system with workload tracking, administrative controls, and Google Calendar integration.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

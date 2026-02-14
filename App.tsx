@@ -121,6 +121,15 @@ const App: React.FC = () => {
     slots.filter(s => s.teacherIds.includes(selectedTeacherId)).length,
   [selectedTeacherId, slots]);
 
+  // Helper function to get Day from Date string for sync
+  const getDayFromDateString = (dateStr: string): Day => {
+    if (!dateStr) return 'Monday';
+    const date = new Date(dateStr);
+    const dayNames: Day[] = ['Monday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Monday'];
+    const dayIdx = date.getDay(); // 0 is Sunday, 1 is Monday...
+    return dayNames[dayIdx] || 'Monday';
+  };
+
   // PDF Generation Function
   const downloadTeacherPdf = async () => {
     if (!teacherScheduleRef.current || !selectedTeacher) return;
@@ -581,57 +590,91 @@ const App: React.FC = () => {
                   {/* EDITOR */}
                   <div className="bg-white p-6 rounded-[2.5rem] border shadow-xl">
                     <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
-                      <h3 className="text-xl font-black uppercase italic text-gray-900">Editor</h3>
-                      <button onClick={() => addDutySlot('breakfast')} className="bg-blue-600 text-white p-3 rounded-xl shadow-lg"><Plus size={20} /></button>
+                      <h3 className="text-xl font-black uppercase italic text-gray-900">Editor Jadual</h3>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Gunakan butang + pada setiap kategori untuk menambah slot</p>
                     </div>
                     <div className="space-y-6">
                       {CATEGORIES.map(cat => (
-                        <div key={cat.id} className="border border-gray-100 rounded-2xl overflow-hidden">
-                          <div className={`px-4 py-2 font-black uppercase text-[9px] ${cat.color} border-b`}>{cat.name}</div>
+                        <div key={cat.id} className="border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+                          <div className={`px-4 py-2 font-black uppercase text-[10px] ${cat.color} border-b flex justify-between items-center`}>
+                            <span className="flex items-center gap-2">
+                              {cat.name}
+                              <span className="bg-white/30 px-1.5 py-0.5 rounded text-[8px]">{slots.filter(s => s.categoryId === cat.id).length} Slots</span>
+                            </span>
+                            <button 
+                              onClick={() => addDutySlot(cat.id)} 
+                              className="bg-white/60 hover:bg-white text-gray-800 p-1.5 rounded-lg transition-all shadow-sm flex items-center gap-1 group"
+                              title={`Tambah Slot untuk ${cat.name}`}
+                            >
+                              <Plus size={14} />
+                              <span className="text-[8px] font-black hidden group-hover:block uppercase pr-1">Tambah Slot</span>
+                            </button>
+                          </div>
                           <div className="divide-y divide-gray-100">
-                            {slots.filter(s => s.categoryId === cat.id).map(slot => (
-                              <div key={slot.id} className="p-4 sm:p-5">
-                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                                  <div className="grid grid-cols-2 gap-2 sm:col-span-3">
-                                    <div>
-                                      <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Hari</label>
-                                      <select className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none" value={slot.day} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, day: e.target.value as Day} : s))}>
-                                        {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                            {slots.filter(s => s.categoryId === cat.id).length === 0 ? (
+                              <div className="p-10 text-center text-gray-300 italic text-xs">Tiada slot dalam kategori ini. Klik butang + untuk menambah.</div>
+                            ) : (
+                              slots.filter(s => s.categoryId === cat.id).map(slot => (
+                                <div key={slot.id} className="p-4 sm:p-5 hover:bg-gray-50/50 transition-colors">
+                                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                                    <div className="grid grid-cols-2 gap-2 sm:col-span-3">
+                                      <div>
+                                        <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Hari</label>
+                                        <select className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none font-black text-gray-700" value={slot.day} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, day: e.target.value as Day} : s))}>
+                                          {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Week/Date</label>
+                                        {cat.id === 'arrival' ? (
+                                          <input 
+                                            type="date" 
+                                            className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none text-blue-600" 
+                                            value={slot.date || ''} 
+                                            onChange={(e) => {
+                                              const newDate = e.target.value;
+                                              const newDay = getDayFromDateString(newDate);
+                                              setSlots(slots.map(s => s.id === slot.id ? {...s, date: newDate, group: newDate, day: newDay} : s));
+                                            }} 
+                                          />
+                                        ) : (
+                                          <input 
+                                            className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none text-blue-600" 
+                                            value={slot.date || slot.group} 
+                                            onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, date: e.target.value, group: e.target.value} : s))} 
+                                          />
+                                        )}
+                                      </div>
+                                      <div>
+                                        <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Masa</label>
+                                        <input className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none" value={slot.time} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, time: e.target.value} : s))} />
+                                      </div>
+                                      <div>
+                                        <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Lokasi</label>
+                                        <input className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none" value={slot.location} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, location: e.target.value} : s))} />
+                                      </div>
+                                    </div>
+                                    <div className="border-t sm:border-t-0 sm:border-l border-gray-100 pt-3 sm:pt-0 sm:pl-3">
+                                      <div className="flex flex-wrap gap-1 mb-2">
+                                        {slot.teacherIds.map(tid => (
+                                          <span key={tid} className="bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-1">
+                                            {teachers.find(t => t.id === tid)?.name.split(' ')[0]}
+                                            <button onClick={() => updateDutyAssignment(slot.id, slot.teacherIds.filter(id => id !== tid))} className="opacity-60">×</button>
+                                          </span>
+                                        ))}
+                                      </div>
+                                      <select className="w-full text-[9px] font-black bg-gray-50 rounded p-1.5 border-none outline-none" onChange={(e) => { if (e.target.value && !slot.teacherIds.includes(e.target.value)) updateDutyAssignment(slot.id, [...slot.teacherIds, e.target.value]); }} value="">
+                                        <option value="">+ Assign</option>
+                                        {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                       </select>
+                                      <button onClick={() => setSlots(slots.filter(s => s.id !== slot.id))} className="mt-3 text-[8px] font-black text-red-300 hover:text-red-500 uppercase flex items-center gap-1">
+                                        <Trash2 size={10} /> Padam Slot
+                                      </button>
                                     </div>
-                                    <div>
-                                      <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Week/Date</label>
-                                      <input className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none text-blue-600" value={slot.date || slot.group} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, date: e.target.value, group: e.target.value} : s))} />
-                                    </div>
-                                    <div>
-                                      <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Masa</label>
-                                      <input className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none" value={slot.time} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, time: e.target.value} : s))} />
-                                    </div>
-                                    <div>
-                                      <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Lokasi</label>
-                                      <input className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none" value={slot.location} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, location: e.target.value} : s))} />
-                                    </div>
-                                  </div>
-                                  <div className="border-t sm:border-t-0 sm:border-l border-gray-100 pt-3 sm:pt-0 sm:pl-3">
-                                    <div className="flex flex-wrap gap-1 mb-2">
-                                      {slot.teacherIds.map(tid => (
-                                        <span key={tid} className="bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-1">
-                                          {teachers.find(t => t.id === tid)?.name.split(' ')[0]}
-                                          <button onClick={() => updateDutyAssignment(slot.id, slot.teacherIds.filter(id => id !== tid))} className="opacity-60">×</button>
-                                        </span>
-                                      ))}
-                                    </div>
-                                    <select className="w-full text-[9px] font-black bg-gray-50 rounded p-1.5 border-none outline-none" onChange={(e) => { if (e.target.value && !slot.teacherIds.includes(e.target.value)) updateDutyAssignment(slot.id, [...slot.teacherIds, e.target.value]); }} value="">
-                                      <option value="">+ Assign</option>
-                                      {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                    </select>
-                                    <button onClick={() => setSlots(slots.filter(s => s.id !== slot.id))} className="mt-3 text-[8px] font-black text-red-300 hover:text-red-500 uppercase flex items-center gap-1">
-                                      <Trash2 size={10} /> Padam Slot
-                                    </button>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
+                              ))
+                            )}
                           </div>
                         </div>
                       ))}

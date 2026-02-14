@@ -35,10 +35,13 @@ import {
   Github,
   Upload,
   Database,
-  RefreshCw,
-  Eraser,
-  // Added missing Download icon
-  Download
+  Download,
+  FileText,
+  Printer,
+  Image as ImageIcon,
+  Building,
+  Palette,
+  RotateCcw
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -49,6 +52,10 @@ import {
   ResponsiveContainer, 
   Cell 
 } from 'recharts';
+
+// Declare global types for PDF generation libraries
+declare const html2canvas: any;
+declare const jspdf: any;
 
 const App: React.FC = () => {
   // State
@@ -80,6 +87,8 @@ const App: React.FC = () => {
 
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
   const [newTeacherName, setNewTeacherName] = useState('');
+  
+  const teacherScheduleRef = useRef<HTMLDivElement>(null);
 
   // Persist state
   useEffect(() => { localStorage.setItem('dm_teachers', JSON.stringify(teachers)); }, [teachers]);
@@ -90,26 +99,57 @@ const App: React.FC = () => {
   const teacherWorkload = useMemo(() => {
     return teachers.map(t => ({
       name: t.name,
-      duties: slots.filter(s => s.categoryId !== 'arrival' && s.teacherIds.includes(t.id)).length
+      duties: slots.filter(s => s.teacherIds.includes(t.id)).length
     })).sort((a, b) => b.duties - a.duties);
   }, [teachers, slots]);
 
   const teacherDuties = useMemo(() => {
     if (!selectedTeacherId) return [];
     return slots.filter(s => s.teacherIds.includes(selectedTeacherId))
-                .sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day));
+                .sort((a, b) => {
+                  const dayDiff = DAYS.indexOf(a.day) - DAYS.indexOf(b.day);
+                  if (dayDiff !== 0) return dayDiff;
+                  return a.time.localeCompare(b.time);
+                });
   }, [selectedTeacherId, slots]);
 
-  // Helper: Get Day from Date string
-  const getDayFromDate = (dateStr: string): Day => {
+  const selectedTeacher = useMemo(() => 
+    teachers.find(t => t.id === selectedTeacherId), 
+  [selectedTeacherId, teachers]);
+
+  const selectedTeacherWorkloadCount = useMemo(() => 
+    slots.filter(s => s.teacherIds.includes(selectedTeacherId)).length,
+  [selectedTeacherId, slots]);
+
+  // PDF Generation Function
+  const downloadTeacherPdf = async () => {
+    if (!teacherScheduleRef.current || !selectedTeacher) return;
+
     try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return 'Monday';
-      const dayNames: Day[] = ['Monday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Monday'];
-      const dayIdx = date.getDay();
-      return dayNames[dayIdx] || 'Monday';
-    } catch {
-      return 'Monday';
+      const element = teacherScheduleRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jspdf.jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`${selectedTeacher.name}_Jadual_Bertugas.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Gagal menjana PDF. Sila cuba lagi.');
     }
   };
 
@@ -146,6 +186,33 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
+  // Image upload handler
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'background') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      if (type === 'logo') {
+        setSettings({ ...settings, logoUrl: base64String });
+      } else {
+        setSettings({ ...settings, backgroundUrl: base64String });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const resetAppearance = () => {
+    if (confirm('Kembalikan tetapan rupa asal?')) {
+      setSettings({
+        ...settings,
+        schoolName: 'Sekolah Tinta',
+        logoUrl: 'https://cdn-icons-png.flaticon.com/512/2854/2854580.png',
+        backgroundUrl: 'https://images.unsplash.com/photo-1510070112810-d4e9a46d9e91?q=80&w=2069&auto=format&fit=crop'
+      });
+    }
+  };
+
   // Login Logic
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,19 +239,13 @@ const App: React.FC = () => {
     setSlots(slots.map(s => s.id === slotId ? { ...s, teacherIds } : s));
   };
 
-  const clearAllAssignments = () => {
-    if (confirm('Padam SEMUA nama guru yang telah diassign dalam jadual?')) {
-      setSlots(slots.map(s => ({ ...s, teacherIds: [] })));
-    }
-  };
-
   const addDutySlot = (category: string) => {
     setSlots([...slots, {
       id: `slot-${Date.now()}`,
       categoryId: category,
       day: 'Monday',
-      time: category === 'arrival' ? '07:30 am - 08:00 am' : '08:00 am - 09:00 am',
-      location: category === 'arrival' ? 'Main Gate' : 'New Location',
+      time: '08:00 am - 09:00 am',
+      location: 'New Location',
       group: 'General',
       teacherIds: []
     }]);
@@ -244,7 +305,7 @@ const App: React.FC = () => {
             <div className="bg-blue-600 p-6 rounded-[2rem] shadow-xl text-white flex justify-between items-center text-center sm:text-left">
                <div>
                  <h2 className="text-2xl font-black uppercase italic tracking-wider">Jadual Induk</h2>
-                 <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Sekolah Tinta</p>
+                 <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">{settings.schoolName}</p>
                </div>
                <Calendar size={32} />
             </div>
@@ -279,7 +340,7 @@ const App: React.FC = () => {
             <div className="bg-yellow-400 p-6 rounded-[2rem] shadow-xl text-gray-900 flex justify-between items-center">
                <div>
                  <h2 className="text-2xl font-black uppercase italic tracking-wider">Arrival Duty</h2>
-                 <p className="text-[10px] font-black opacity-80 uppercase tracking-widest tracking-widest">7.30 am – 8.00 am</p>
+                 <p className="text-[10px] font-black opacity-80 uppercase tracking-widest">7.30 am – 8.00 am</p>
                </div>
                <Clock size={32} />
             </div>
@@ -289,22 +350,20 @@ const App: React.FC = () => {
                   return (
                     <div key={day} className="bg-white p-5 rounded-[1.5rem] border-2 border-yellow-400 shadow-sm">
                       <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-3">
-                        <span className="text-sm font-black uppercase italic text-gray-900">{day}</span>
+                        <span className="text-sm font-black uppercase text-gray-900">{day}</span>
                         <span className="text-[9px] font-black text-yellow-600 uppercase">{daySlots[0]?.date || '-'}</span>
                       </div>
                       <div className="space-y-3">
-                        {['Main Gate', 'Hall'].map(loc => {
-                          const s = daySlots.find(slot => slot.location === loc);
-                          return (
+                        {['Main Gate', 'Hall'].map(loc => (
                           <div key={loc} className="flex flex-col gap-1 p-2 bg-gray-50 rounded-xl">
                             <span className="text-[8px] font-black uppercase text-gray-400 tracking-widest">{loc}</span>
                             <div className="flex flex-wrap gap-1">
-                              {s?.teacherIds.map(tid => (
+                              {daySlots.find(s => s.location === loc)?.teacherIds.map(tid => (
                                 <span key={tid} className="bg-white px-2 py-0.5 rounded text-[9px] font-bold border border-gray-200">{teachers.find(t => t.id === tid)?.name}</span>
-                              )) || <span className="text-[9px] text-gray-300 italic">Belum diassign</span>}
+                              )) || <span className="text-[9px] text-gray-300 italic">Kosong</span>}
                             </div>
                           </div>
-                        )})}
+                        ))}
                       </div>
                     </div>
                   );
@@ -344,25 +403,61 @@ const App: React.FC = () => {
             <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100 text-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl rotate-3"><Search size={32} /></div>
               <h2 className="text-xl font-black mb-1 uppercase italic text-gray-900">Semak Jadual</h2>
-              <select className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold text-gray-700 text-xs sm:text-sm text-center outline-none" value={selectedTeacherId} onChange={(e) => setSelectedTeacherId(e.target.value)}>
-                <option value="">-- PILIH NAMA GURU --</option>
-                {teachers.sort((a,b) => a.name.localeCompare(b.name)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <div className="space-y-4">
+                <select className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl font-bold text-gray-700 text-xs sm:text-sm text-center outline-none" value={selectedTeacherId} onChange={(e) => setSelectedTeacherId(e.target.value)}>
+                  <option value="">-- PILIH NAMA GURU --</option>
+                  {teachers.sort((a,b) => a.name.localeCompare(b.name)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+
+                {selectedTeacherId && (
+                  <div className="flex items-center justify-between p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                    <div className="text-left">
+                      <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Workload Count</p>
+                      <h4 className="text-lg font-black text-blue-800">{selectedTeacherWorkloadCount} Tugasan</h4>
+                    </div>
+                    <button 
+                      onClick={downloadTeacherPdf}
+                      className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-blue-700 transition-all"
+                    >
+                      <FileText size={14} /> PDF
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
+
             {selectedTeacherId && (
-              <div className="space-y-3">
+              <div className="space-y-3" ref={teacherScheduleRef}>
+                 {/* Header for PDF capture only */}
+                 <div className="hidden print-block text-center py-4 border-b-2 border-gray-100 mb-4 bg-white rounded-t-2xl">
+                    <h2 className="text-xl font-black uppercase">{selectedTeacher?.name}</h2>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Jadual Bertugas {settings.schoolName}</p>
+                 </div>
+
                  {teacherDuties.map(duty => (
                     <div key={duty.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
                        <div className="flex items-center justify-between border-b border-gray-50 pb-2">
                           <span className="text-sm font-black uppercase text-blue-700 italic">{duty.day}</span>
-                          <span className={`text-[7px] font-black px-1.5 py-0.5 rounded text-white ${duty.categoryId === 'arrival' ? 'bg-yellow-500' : 'bg-blue-600'}`}>{CATEGORIES.find(c => c.id === duty.categoryId)?.name.toUpperCase()}</span>
+                          <span className={`text-[7px] font-black px-1.5 py-0.5 rounded text-white ${duty.categoryId === 'arrival' ? 'bg-yellow-500' : 'bg-blue-600'}`}>
+                            {CATEGORIES.find(c => c.id === duty.categoryId)?.name.toUpperCase()}
+                          </span>
                        </div>
                        <div className="text-[11px] font-black text-gray-900">{duty.time}</div>
                        <div className="text-[9px] font-bold text-gray-400 uppercase">Lokasi: {duty.location}</div>
-                       <a href={getGoogleCalendarLink(CATEGORIES.find(c => c.id === duty.categoryId)?.name || 'Duty', duty.day, duty.time, duty.location)} target="_blank" rel="noreferrer" className="mt-1 flex items-center justify-center gap-2 bg-blue-600 text-white p-2.5 rounded-xl font-black text-[9px] uppercase shadow-lg"><Calendar size={12} /> Google Calendar</a>
+                       <div className="no-print">
+                        <a href={getGoogleCalendarLink(CATEGORIES.find(c => c.id === duty.categoryId)?.name || 'Duty', duty.day, duty.time, duty.location)} target="_blank" rel="noreferrer" className="mt-1 flex items-center justify-center gap-2 bg-blue-50 text-blue-600 p-2.5 rounded-xl font-black text-[9px] uppercase hover:bg-blue-100 transition-colors">
+                          <Calendar size={12} /> Sync Calendar
+                        </a>
+                       </div>
                     </div>
                  ))}
-                 {teacherDuties.length === 0 && <div className="bg-green-50 p-10 rounded-[2rem] border-2 border-dashed border-green-100 text-center"><CheckCircle2 size={40} className="mx-auto mb-2 text-green-300" /><p className="font-black text-green-800 uppercase text-[10px]">Tiada Tugasan</p></div>}
+
+                 {teacherDuties.length === 0 && (
+                   <div className="bg-green-50 p-10 rounded-[2rem] border-2 border-dashed border-green-100 text-center">
+                    <CheckCircle2 size={40} className="mx-auto mb-2 text-green-300" />
+                    <p className="font-black text-green-800 uppercase text-[10px]">Tiada Tugasan</p>
+                   </div>
+                 )}
               </div>
             )}
           </div>
@@ -387,13 +482,14 @@ const App: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 max-w-7xl mx-auto">
                 <div className="lg:col-span-1 space-y-6">
+                  {/* TEACHER LIST */}
                   <div className="bg-white p-6 rounded-[2rem] border shadow-xl">
                     <h3 className="text-lg font-black mb-6 flex items-center gap-2 uppercase tracking-tight text-blue-600"><Users size={20} /> Guru</h3>
                     <div className="flex gap-2 mb-4">
                       <input type="text" placeholder="NAMA..." className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold outline-none" value={newTeacherName} onChange={(e) => setNewTeacherName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addTeacher()} />
                       <button onClick={addTeacher} className="bg-blue-600 text-white p-2.5 rounded-xl"><Plus size={18} /></button>
                     </div>
-                    <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                    <div className="max-h-[250px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                       {teachers.sort((a,b) => a.name.localeCompare(b.name)).map(t => (
                         <div key={t.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-transparent hover:border-gray-200">
                           <span className="font-bold text-[10px] text-gray-700 uppercase">{t.name}</span>
@@ -402,23 +498,91 @@ const App: React.FC = () => {
                       ))}
                     </div>
                   </div>
+
+                  {/* APPEARANCE SETTINGS */}
                   <div className="bg-white p-6 rounded-[2rem] border shadow-xl">
-                    <h3 className="text-lg font-black mb-4 uppercase tracking-tight text-indigo-600 flex items-center gap-2"><Database size={20} /> Backup & Reset</h3>
-                    <button onClick={handleExportData} className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white p-3 rounded-xl font-black text-[10px] uppercase shadow-md mb-2"><Download size={14} /> Backup</button>
-                    <button onClick={clearAllAssignments} className="w-full flex items-center justify-center gap-2 bg-red-600 text-white p-3 rounded-xl font-black text-[10px] uppercase shadow-md hover:bg-red-700"><RefreshCw size={14} /> Reset Semua Nama</button>
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-lg font-black flex items-center gap-2 uppercase tracking-tight text-pink-600"><Palette size={20} /> Rupa App</h3>
+                      <button onClick={resetAppearance} className="text-gray-300 hover:text-gray-600 transition-colors" title="Reset Asal"><RotateCcw size={16} /></button>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[8px] font-black text-gray-400 uppercase mb-1 flex items-center gap-1"><Building size={10} /> Nama Sekolah</label>
+                        <input 
+                          type="text" 
+                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold"
+                          value={settings.schoolName}
+                          onChange={(e) => setSettings({ ...settings, schoolName: e.target.value })}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-[8px] font-black text-gray-400 uppercase mb-1 flex items-center gap-1"><ImageIcon size={10} /> Logo (URL / Upload)</label>
+                        <div className="space-y-2">
+                          <input 
+                            type="text" 
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[9px] font-bold"
+                            placeholder="https://..."
+                            value={settings.logoUrl}
+                            onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })}
+                          />
+                          <input 
+                            type="file" 
+                            id="logo-upload" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={(e) => handleImageUpload(e, 'logo')} 
+                          />
+                          <label htmlFor="logo-upload" className="w-full flex items-center justify-center gap-2 bg-pink-50 text-pink-600 p-2 rounded-xl font-black text-[9px] uppercase border border-pink-100 cursor-pointer hover:bg-pink-100">
+                            <Upload size={12} /> Muat Naik Logo
+                          </label>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[8px] font-black text-gray-400 uppercase mb-1 flex items-center gap-1"><ImageIcon size={10} /> Background (URL / Upload)</label>
+                        <div className="space-y-2">
+                          <input 
+                            type="text" 
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[9px] font-bold"
+                            placeholder="https://..."
+                            value={settings.backgroundUrl}
+                            onChange={(e) => setSettings({ ...settings, backgroundUrl: e.target.value })}
+                          />
+                          <input 
+                            type="file" 
+                            id="bg-upload" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={(e) => handleImageUpload(e, 'background')} 
+                          />
+                          <label htmlFor="bg-upload" className="w-full flex items-center justify-center gap-2 bg-pink-50 text-pink-600 p-2 rounded-xl font-black text-[9px] uppercase border border-pink-100 cursor-pointer hover:bg-pink-100">
+                            <Upload size={12} /> Muat Naik Background
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* DATA BACKUP */}
+                  <div className="bg-white p-6 rounded-[2rem] border shadow-xl">
+                    <h3 className="text-lg font-black mb-4 uppercase tracking-tight text-indigo-600 flex items-center gap-2"><Database size={20} /> Backup</h3>
+                    <button onClick={handleExportData} className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white p-3 rounded-xl font-black text-[10px] uppercase shadow-md mb-2"><Download size={14} /> Backup Data</button>
+                    <div className="relative">
+                      <input type="file" id="import-data" accept=".json" onChange={handleImportData} className="hidden" />
+                      <label htmlFor="import-data" className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-600 p-3 rounded-xl font-black text-[10px] uppercase border border-gray-200 cursor-pointer hover:bg-gray-200">
+                        <Upload size={14} /> Import Data
+                      </label>
+                    </div>
                   </div>
                 </div>
 
                 <div className="lg:col-span-2 space-y-6">
+                  {/* EDITOR */}
                   <div className="bg-white p-6 rounded-[2.5rem] border shadow-xl">
                     <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
-                      <h3 className="text-xl font-black uppercase italic text-gray-900">Duty Master Editor</h3>
-                      <div className="flex gap-2">
-                        <select id="cat-selector" className="text-[10px] font-black uppercase border-2 border-gray-100 rounded-xl px-4 bg-gray-50">
-                          {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <button onClick={() => addDutySlot((document.getElementById('cat-selector') as HTMLSelectElement).value)} className="bg-blue-600 text-white p-3 rounded-xl shadow-lg"><Plus size={20} /></button>
-                      </div>
+                      <h3 className="text-xl font-black uppercase italic text-gray-900">Editor</h3>
+                      <button onClick={() => addDutySlot('breakfast')} className="bg-blue-600 text-white p-3 rounded-xl shadow-lg"><Plus size={20} /></button>
                     </div>
                     <div className="space-y-6">
                       {CATEGORIES.map(cat => (
@@ -426,22 +590,18 @@ const App: React.FC = () => {
                           <div className={`px-4 py-2 font-black uppercase text-[9px] ${cat.color} border-b`}>{cat.name}</div>
                           <div className="divide-y divide-gray-100">
                             {slots.filter(s => s.categoryId === cat.id).map(slot => (
-                              <div key={slot.id} className="p-4 sm:p-5 hover:bg-gray-50/30">
+                              <div key={slot.id} className="p-4 sm:p-5">
                                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                                   <div className="grid grid-cols-2 gap-2 sm:col-span-3">
                                     <div>
-                                      <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Tarikh (YYYY-MM-DD)</label>
-                                      <input type="date" className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none text-blue-600" value={slot.date || ''} onChange={(e) => {
-                                        const newDate = e.target.value;
-                                        const newDay = getDayFromDate(newDate);
-                                        setSlots(slots.map(s => s.id === slot.id ? {...s, date: newDate, day: newDay} : s));
-                                      }} />
-                                    </div>
-                                    <div>
                                       <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Hari</label>
-                                      <select className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none font-black text-gray-700" value={slot.day} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, day: e.target.value as Day} : s))}>
+                                      <select className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none" value={slot.day} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, day: e.target.value as Day} : s))}>
                                         {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
                                       </select>
+                                    </div>
+                                    <div>
+                                      <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Week/Date</label>
+                                      <input className="w-full text-xs font-bold bg-transparent p-0 border-none outline-none text-blue-600" value={slot.date || slot.group} onChange={(e) => setSlots(slots.map(s => s.id === slot.id ? {...s, date: e.target.value, group: e.target.value} : s))} />
                                     </div>
                                     <div>
                                       <label className="block text-[7px] font-black text-gray-400 uppercase mb-1">Masa</label>
@@ -465,21 +625,17 @@ const App: React.FC = () => {
                                       <option value="">+ Assign</option>
                                       {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </select>
-                                    <div className="flex gap-2 mt-4">
-                                      <button onClick={() => updateDutyAssignment(slot.id, [])} className="text-[8px] font-black text-gray-400 hover:text-orange-500 uppercase flex items-center gap-1 transition-colors">
-                                        <Eraser size={10} /> Kosongkan Guru
-                                      </button>
-                                      <button onClick={() => { if(confirm('Padam slot ini terus?')) setSlots(slots.filter(s => s.id !== slot.id)); }} className="text-[8px] font-black text-gray-300 hover:text-red-500 uppercase flex items-center gap-1">
-                                        <Trash2 size={10} /> Padam Slot
-                                      </button>
-                                    </div>
+                                    <button onClick={() => setSlots(slots.filter(s => s.id !== slot.id))} className="mt-3 text-[8px] font-black text-red-300 hover:text-red-500 uppercase flex items-center gap-1">
+                                      <Trash2 size={10} /> Padam Slot
+                                    </button>
                                   </div>
                                 </div>
                               </div>
                             ))}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ))}
+                    </div>
                    </div>
                 </div>
               </div>
@@ -490,7 +646,7 @@ const App: React.FC = () => {
 
       <footer className="relative z-10 max-w-7xl mx-auto w-full px-4 pb-10 text-center no-print">
         <div className="pt-8 border-t border-gray-200/50 flex flex-col items-center gap-3">
-          <p className="text-gray-400 text-[8px] font-black uppercase tracking-[0.2em]">&copy; 2024 {settings.schoolName} • Master Duty v5.0 Elite</p>
+          <p className="text-gray-400 text-[8px] font-black uppercase tracking-[0.2em]">&copy; 2024 {settings.schoolName} • Master Duty v4.1 Pro</p>
           <a href="https://github.com" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-gray-400 hover:text-gray-900 transition-colors">
             <Github size={16} /><span className="text-[9px] font-black uppercase tracking-widest">Visit GitHub</span>
           </a>

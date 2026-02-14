@@ -30,6 +30,7 @@ export interface AppSettings {
   logoUrl: string;
   primaryColor: string;
   backgroundUrl: string;
+  musicUrl?: string;       // URL for background music
   adminPassword?: string;
   masterTitle: string;    // Tajuk di Dashboard (e.g. DUTY MASTER)
   masterSubtitle: string; // Subtajuk di Dashboard (e.g. GROUP)

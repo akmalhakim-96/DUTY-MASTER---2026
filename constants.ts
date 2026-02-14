@@ -39,28 +39,24 @@ export const CATEGORIES: DutyCategory[] = [
 
 export const INITIAL_SLOTS: DutySlot[] = [
   // --- ARRIVAL DUTY ---
-  { id: 'a-m-1', categoryId: 'arrival', day: 'Monday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['10', '11'], week: 1, date: '9-Feb-26' },
-  { id: 'a-m-2', categoryId: 'arrival', day: 'Monday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['21', '22'], week: 1, date: '9-Feb-26' },
-  { id: 'a-t-1', categoryId: 'arrival', day: 'Tuesday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['1', '2'], week: 1, date: '10-Feb-26' },
-  { id: 'a-t-2', categoryId: 'arrival', day: 'Tuesday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['3', '4'], week: 1, date: '10-Feb-26' },
-  { id: 'a-w-1', categoryId: 'arrival', day: 'Wednesday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['5', '6'], week: 1, date: '11-Feb-26' },
-  { id: 'a-w-2', categoryId: 'arrival', day: 'Wednesday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['7', '8'], week: 1, date: '11-Feb-26' },
-  { id: 'a-th-1', categoryId: 'arrival', day: 'Thursday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['9', '12'], week: 1, date: '12-Feb-26' },
-  { id: 'a-th-2', categoryId: 'arrival', day: 'Thursday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['13', '14'], week: 1, date: '12-Feb-26' },
-  { id: 'a-f-1', categoryId: 'arrival', day: 'Friday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['15', '16'], week: 1, date: '13-Feb-26' },
-  { id: 'a-f-2', categoryId: 'arrival', day: 'Friday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['17', '18'], week: 1, date: '13-Feb-26' },
+  { id: 'a-m-1', categoryId: 'arrival', day: 'Monday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['10', '11'], week: 1, date: '2026-02-09' },
+  { id: 'a-m-2', categoryId: 'arrival', day: 'Monday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['21', '22'], week: 1, date: '2026-02-09' },
+  { id: 'a-t-1', categoryId: 'arrival', day: 'Tuesday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['1', '2'], week: 1, date: '2026-02-10' },
+  { id: 'a-t-2', categoryId: 'arrival', day: 'Tuesday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['3', '4'], week: 1, date: '2026-02-10' },
+  { id: 'a-w-1', categoryId: 'arrival', day: 'Wednesday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['5', '6'], week: 1, date: '2026-02-11' },
+  { id: 'a-w-2', categoryId: 'arrival', day: 'Wednesday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['7', '8'], week: 1, date: '2026-02-11' },
+  { id: 'a-th-1', categoryId: 'arrival', day: 'Thursday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['9', '12'], week: 1, date: '2026-02-12' },
+  { id: 'a-th-2', categoryId: 'arrival', day: 'Thursday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['13', '14'], week: 1, date: '2026-02-12' },
+  { id: 'a-f-1', categoryId: 'arrival', day: 'Friday', time: '7:30 am - 8:00 am', location: 'Main Gate', group: '1 (GROUP A)', teacherIds: ['15', '16'], week: 1, date: '2026-02-13' },
+  { id: 'a-f-2', categoryId: 'arrival', day: 'Friday', time: '7:30 am - 8:00 am', location: 'Hall', group: '1 (GROUP A)', teacherIds: ['17', '18'], week: 1, date: '2026-02-13' },
 
-  // --- PLAY TIME DUTY (BERDASARKAN GAMBAR) ---
-  // Monday
+  // --- PLAY TIME DUTY ---
   { id: 'pt-m-1', categoryId: 'playtime', day: 'Monday', time: '12:45 pm - 1:10 pm', location: 'Hall', group: 'Year 1 - 3', teacherIds: ['17', '11'] },
   { id: 'pt-m-2', categoryId: 'playtime', day: 'Monday', time: '12:45 pm - 1:10 pm', location: 'Grass Field', group: 'Year 4 - 6', teacherIds: ['8', '10'] },
-  // Tuesday
   { id: 'pt-t-1', categoryId: 'playtime', day: 'Tuesday', time: '12:45 pm - 1:10 pm', location: 'Hall', group: 'Year 1 - 3', teacherIds: ['16', '3'] },
   { id: 'pt-t-2', categoryId: 'playtime', day: 'Tuesday', time: '12:45 pm - 1:10 pm', location: 'Grass Field', group: 'Year 4 - 6', teacherIds: ['13'] },
-  // Wednesday
   { id: 'pt-w-1', categoryId: 'playtime', day: 'Wednesday', time: '12:45 pm - 1:10 pm', location: 'Hall', group: 'Year 1 - 3', teacherIds: ['14', '15'] },
   { id: 'pt-w-2', categoryId: 'playtime', day: 'Wednesday', time: '12:45 pm - 1:10 pm', location: 'Grass Field', group: 'Year 4 - 6', teacherIds: ['5', '18'] },
-  // Thursday
   { id: 'pt-th-1', categoryId: 'playtime', day: 'Thursday', time: '12:45 pm - 1:10 pm', location: 'Hall', group: 'Year 1 - 3', teacherIds: ['2', '1'] },
   { id: 'pt-th-2', categoryId: 'playtime', day: 'Thursday', time: '12:45 pm - 1:10 pm', location: 'Grass Field', group: 'Year 4 - 6', teacherIds: ['6', '4'] },
 
@@ -69,5 +65,4 @@ export const INITIAL_SLOTS: DutySlot[] = [
   { id: 'b-m-2', categoryId: 'breakfast', day: 'Monday', time: '10:15 am - 10:45 am', location: 'Café', group: 'Upper & Sec', teacherIds: ['17', '1'] },
   // --- LUNCH ---
   { id: 'l-m-1', categoryId: 'lunch', day: 'Monday', time: '12:45 pm - 1:30 pm', location: 'Café', group: 'Lower Level', teacherIds: ['1', '2'] },
-  // ... (slot lain tetap dikekalkan secara internal)
 ];

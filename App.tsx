@@ -53,7 +53,9 @@ import {
   Loader2,
   TrendingUp,
   Type,
-  Music as MusicIcon
+  Music as MusicIcon,
+  Upload,
+  Sparkles
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -113,8 +115,10 @@ const App: React.FC = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
   const [adminTab, setAdminTab] = useState<'slots' | 'teachers' | 'settings'>('slots');
+  
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{role: 'user' | 'ai', text: string}[]>([
@@ -130,28 +134,26 @@ const App: React.FC = () => {
   
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
 
-  // Logik Music Autoplay: Sebaik sahaja user masuk dan klik/sentuh mana-mana bahagian screen, muzik akan ON secara automatik.
   useEffect(() => {
     const handleFirstInteraction = () => {
-      if (settings.musicUrl && !isMusicPlaying) {
-        setIsMusicPlaying(true);
-      }
-      // Remove listener selepas interaction pertama berjaya
-      window.removeEventListener('mousedown', handleFirstInteraction);
-      window.removeEventListener('touchstart', handleFirstInteraction);
-      window.removeEventListener('keydown', handleFirstInteraction);
+      setIsMusicPlaying(true);
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('touchstart', handleFirstInteraction);
+      document.removeEventListener('mousedown', handleFirstInteraction);
+      document.removeEventListener('keydown', handleFirstInteraction);
     };
-    
-    window.addEventListener('mousedown', handleFirstInteraction);
-    window.addEventListener('touchstart', handleFirstInteraction);
-    window.addEventListener('keydown', handleFirstInteraction);
+    document.addEventListener('click', handleFirstInteraction);
+    document.addEventListener('touchstart', handleFirstInteraction);
+    document.addEventListener('mousedown', handleFirstInteraction);
+    document.addEventListener('keydown', handleFirstInteraction);
 
     return () => {
-      window.removeEventListener('mousedown', handleFirstInteraction);
-      window.removeEventListener('touchstart', handleFirstInteraction);
-      window.removeEventListener('keydown', handleFirstInteraction);
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('touchstart', handleFirstInteraction);
+      document.removeEventListener('mousedown', handleFirstInteraction);
+      document.removeEventListener('keydown', handleFirstInteraction);
     };
-  }, [settings.musicUrl, isMusicPlaying]);
+  }, []);
 
   useEffect(() => {
     const docRef = doc(db, "dutyMaster", "state");
@@ -279,7 +281,7 @@ const App: React.FC = () => {
       const currentDateString = now.toISOString().split('T')[0];
       const teachersContext = teachers.map(t => `${t.name} (${t.role})`).join(', ');
       const slotsContext = slots.map(s => `${s.day} @ ${s.time} - ${s.location}: ${s.teacherIds.map(id => teachers.find(t => t.id === id)?.name).join(', ')}`).join('; ');
-      const systemInstruction = `Anda SIR AKMAL, pengurus tugasan ${settings.schoolName}. Hari ini ${currentDayName} (${currentDateString}). GURU: ${teachersContext}. JADUAL: ${slotsContext}. Jawab soalan tugasan secara profesional dan mesra.`;
+      const systemInstruction = `Anda SIR AKMAL, pengurus tugasan ${settings.schoolName}. Hari ini ${currentDayName} (${currentDateString}). GURU: ${teachersContext}. JADUAL: ${slotsContext}. Jawab soalan tugasan secara profesional and mesra.`;
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ role: 'user', parts: [{ text: systemInstruction }] }, ...chatMessages.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text }] })), { role: 'user', parts: [{ text: currentInput }] }],
@@ -425,8 +427,6 @@ const App: React.FC = () => {
   }, [teachers, slots]);
 
   const youtubeId = useMemo(() => getYoutubeId(settings.musicUrl), [settings.musicUrl]);
-
-  // Master reordering as requested: breakfast, playtime, zuhur, lunch, dismissal
   const masterCategoryOrder = ['breakfast', 'playtime', 'zuhur', 'lunch', 'dismissal'];
 
   return (
@@ -446,6 +446,36 @@ const App: React.FC = () => {
         .music-bar { animation: music-bars 1s ease-in-out infinite; }
       `}</style>
 
+      {/* Welcome Modal */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-xl flex items-center justify-center p-6 animate-fadeIn">
+          <div className="bg-white max-w-lg w-full p-10 rounded-[3.5rem] shadow-2xl text-center relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-50 rounded-full -ml-12 -mb-12"></div>
+            
+            <div className="w-20 h-20 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-xl relative z-10">
+              <Sparkles size={40} />
+            </div>
+            
+            <h2 className="text-2xl font-black uppercase italic tracking-tight text-gray-900 mb-6 relative z-10">Selamat Datang</h2>
+            
+            <div className="space-y-2 relative z-10 mb-10">
+              <p className="text-gray-700 font-bold italic leading-relaxed text-sm">Sirih berlipat sirih pinang,</p>
+              <p className="text-gray-700 font-bold italic leading-relaxed text-sm">Hiasan sanggul buat penyeri;</p>
+              <p className="text-gray-700 font-bold italic leading-relaxed text-sm">Kehadiran tuan hati pun senang,</p>
+              <p className="text-gray-700 font-bold italic leading-relaxed text-sm">Semangat membara kental di diri.</p>
+            </div>
+
+            <button 
+              onClick={() => setShowWelcome(false)}
+              className="w-full bg-blue-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg hover:bg-blue-700 active:scale-95 transition-all relative z-10"
+            >
+              Mula Bertugas
+            </button>
+          </div>
+        </div>
+      )}
+
       {isGeneratingPdf && (
         <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fadeIn">
           <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-4">
@@ -457,7 +487,15 @@ const App: React.FC = () => {
 
       {isMusicPlaying && youtubeId && (
         <div className="fixed opacity-0 pointer-events-none w-1 h-1 overflow-hidden z-[-1]">
-          <iframe width="560" height="315" src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&loop=1&playlist=${youtubeId}`} title="YouTube Player" allow="autoplay"></iframe>
+          <iframe 
+            key={youtubeId}
+            width="560" 
+            height="315" 
+            src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&mute=0&loop=1&playlist=${youtubeId}`} 
+            title="YouTube Player" 
+            allow="autoplay; encrypted-media" 
+            allowFullScreen>
+          </iframe>
         </div>
       )}
 
@@ -715,19 +753,30 @@ const App: React.FC = () => {
                         <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">School Logo</label>
                         <div className="flex items-center gap-4">
                            <div className="w-16 h-16 bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden"><img src={draftSettings.logoUrl} className="w-full h-full object-contain" /></div>
-                           <input type="file" accept="image/*" onChange={async (e) => {
+                           <input type="file" id="logo-upload" className="hidden" accept="image/*" onChange={async (e) => {
                              const file = e.target.files?.[0];
                              if (file) {
                                const base64 = await resizeImage(file, 400);
                                setDraftSettings({...draftSettings, logoUrl: base64});
                              }
-                           }} className="text-[10px] font-black text-gray-500" />
+                           }} />
+                           <label htmlFor="logo-upload" className="cursor-pointer bg-blue-50 text-blue-600 px-4 py-3 rounded-xl text-[9px] font-black uppercase border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2"><Upload size={14}/> Muat Naik Logo</label>
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">Background (Image or Video)</label>
-                        <input type="text" className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border border-gray-100 mb-2" placeholder="Image/Video URL" value={draftSettings.backgroundUrl} onChange={(e) => setDraftSettings({...draftSettings, backgroundUrl: e.target.value})} />
-                        <div className="text-[8px] font-bold text-gray-400 uppercase italic">* Use Unsplash or MP4 direct links for better visuals</div>
+                        <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">Latar Belakang (Imej atau Video)</label>
+                        <input type="text" className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border border-gray-100 mb-3 outline-none focus:border-blue-400" placeholder="Pautan Imej atau Video URL" value={draftSettings.backgroundUrl} onChange={(e) => setDraftSettings({...draftSettings, backgroundUrl: e.target.value})} />
+                        <div className="flex items-center gap-4">
+                          <input type="file" id="bg-upload" className="hidden" accept="image/*" onChange={async (e) => {
+                             const file = e.target.files?.[0];
+                             if (file) {
+                               const base64 = await resizeImage(file, 1920); // Resolusi tinggi untuk latar belakang
+                               setDraftSettings({...draftSettings, backgroundUrl: base64});
+                             }
+                           }} />
+                          <label htmlFor="bg-upload" className="cursor-pointer bg-blue-50 text-blue-600 px-4 py-3 rounded-xl text-[9px] font-black uppercase border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2"><Upload size={14}/> Muat Naik Imej Latar</label>
+                          <div className="text-[8px] font-bold text-gray-400 uppercase italic leading-none">* Pilih fail atau tampal pautan URL</div>
+                        </div>
                       </div>
                    </div>
                 </div>

@@ -13,7 +13,7 @@ export interface DutySlot {
   day: Day;
   time: string;
   location: string;
-  group: string; // e.g., "Lower Level", "Ushers", "Level G", or "GROUP A"
+  group: string;
   teacherIds: string[];
   week?: number;
   date?: string;
@@ -31,6 +31,10 @@ export interface AppSettings {
   primaryColor: string;
   backgroundUrl: string;
   adminPassword?: string;
+  masterTitle: string;    // Tajuk di Dashboard (e.g. DUTY MASTER)
+  masterSubtitle: string; // Subtajuk di Dashboard (e.g. GROUP)
+  cloudId?: string;
+  lastSynced?: string;
 }
 
-export type ViewState = 'dashboard' | 'teacher-view' | 'admin' | 'tracker' | 'arrival-duty';
+export type ViewState = 'dashboard' | 'teacher-view' | 'admin' | 'tracker' | 'arrival-duty' | 'playtime';

@@ -56,14 +56,14 @@ export const getGoogleCalendarLink = (title: string, day: Day, time: string, loc
   const startStr = formatLocal(targetDate, start.h, start.m);
   const endStr = formatLocal(targetDate, end.h, end.m);
 
-  // Recurrence rule: Weekly until end of December 2026
-  const recurrence = `RRULE:FREQ=WEEKLY;BYDAY=${dayCodeMap[day]};UNTIL=20261231T235959Z`;
+  // Recurrence rule: Weekly until end of June 2026
+  const recurrence = `RRULE:FREQ=WEEKLY;BYDAY=${dayCodeMap[day]};UNTIL=20260630T235959Z`;
 
   const params = new URLSearchParams({
     action: 'TEMPLATE',
     text: `DUTY: ${title} (${location})`,
     dates: `${startStr}/${endStr}`,
-    details: `Tugasan Guru: ${title}\nLokasi: ${location}\n\n⚠️ PENTING: Sila tetapkan peringatan (NOTIFICATIONS) secara manual kepada 5 MINIT & 10 MINIT sebelum tugasan bermula.\n\n✅ Pengulangan: Setiap minggu sehingga Disember 2026.`,
+    details: `Tugasan Guru: ${title}\nLokasi: ${location}\n\n⚠️ PENTING: Sila tetapkan peringatan (NOTIFICATIONS) secara manual kepada 5 MINIT & 10 MINIT sebelum tugasan bermula.\n\n✅ Pengulangan: Setiap minggu sehingga JUN 2026.`,
     location: location,
     recur: recurrence
   });

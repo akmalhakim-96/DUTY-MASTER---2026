@@ -27,6 +27,7 @@ import {
   CATEGORIES, 
   DAYS 
 } from './constants';
+import { getGoogleCalendarLink } from './utils';
 import { 
   Calendar, 
   Settings, 
@@ -39,7 +40,7 @@ import {
   FileText,
   Save,
   AlertCircle,
-  Cloud,
+  Cloud, 
   RefreshCw,
   Users,
   Trash2,
@@ -55,7 +56,8 @@ import {
   Type,
   Music as MusicIcon,
   Upload,
-  Sparkles
+  Sparkles,
+  Info
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -122,7 +124,7 @@ const App: React.FC = () => {
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{role: 'user' | 'ai', text: string}[]>([
-    { role: 'ai', text: 'Halo! Saya SIR AKMAL (AI). Ada apa-apa yang boleh saya bantu tentang jadual tugasan hari ini?' }
+    { role: 'ai', text: 'Assalamualaikum! Hamba SIR AKMAL (AI). Ada apa-apa yang boleh hamba bantu tentang jadual tugasan hari ini?' }
   ]);
   const [userInput, setUserInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -133,6 +135,51 @@ const App: React.FC = () => {
   const [draftSettings, setDraftSettings] = useState<AppSettings>(settings);
   
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
+
+  const formatDisplayDate = (dateStr: string | undefined) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const year = parts[0];
+      const month = parseInt(parts[1]);
+      const day = parseInt(parts[2]);
+      const monthNames = ["Januari", "Februari", "Mac", "April", "Mei", "Jun", "Julai", "Ogos", "September", "Oktober", "November", "Disember"];
+      return `${day} ${monthNames[month - 1]} ${year}`;
+    }
+    return dateStr;
+  };
+
+  // Logik Semakan Status Bekerja & Julat Tarikh
+  const dutyInfo = useMemo(() => {
+    const today = new Date();
+    const day = today.getDay();
+    // Cari Isnin minggu ini
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(today);
+    monday.setDate(diff);
+    monday.setHours(0, 0, 0, 0);
+
+    const weekDates = Array.from({ length: 5 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d.toISOString().split('T')[0];
+    });
+
+    const arrivalSlots = slots.filter(s => s.categoryId === 'arrival' && s.date);
+    const workingNow = arrivalSlots.some(s => s.date && weekDates.includes(s.date));
+
+    // Cari tarikh mula dan tamat daripada semua arrival duty yang ada
+    const allDates = arrivalSlots.map(s => s.date as string).filter(Boolean).sort();
+    const startDate = allDates.length > 0 ? formatDisplayDate(allDates[0]) : 'Tiada Data';
+    const endDate = allDates.length > 0 ? formatDisplayDate(allDates[allDates.length - 1]) : 'Tiada Data';
+
+    return {
+      isWorkingThisWeek: workingNow,
+      startDate,
+      endDate,
+      hasArrivalData: allDates.length > 0
+    };
+  }, [slots]);
 
   useEffect(() => {
     const handleFirstInteraction = () => {
@@ -211,7 +258,7 @@ const App: React.FC = () => {
   };
 
   const handleApplyChanges = async () => {
-    if (confirm("Simpan semua perubahan ke Cloud?")) {
+    if (confirm("Simpan semua perubahan ke Armada?")) {
       await saveToFirestore(draftTeachers, draftSlots, draftSettings);
       setSlots(draftSlots);
       setTeachers(draftTeachers);
@@ -245,19 +292,6 @@ const App: React.FC = () => {
     });
   };
 
-  const formatDisplayDate = (dateStr: string | undefined) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      const year = parts[0];
-      const month = parseInt(parts[1]);
-      const day = parseInt(parts[2]);
-      const monthNames = ["Januari", "Februari", "Mac", "April", "Mei", "Jun", "Julai", "Ogos", "September", "Oktober", "November", "Disember"];
-      return `${day} - ${monthNames[month - 1]} - ${year}`;
-    }
-    return dateStr;
-  };
-
   const isVideoUrl = (url: string) => url?.startsWith('data:video/') || url?.match(/\.(mp4|webm|ogg)$/i);
   const getYoutubeId = (url: string | undefined) => {
     if (!url) return null;
@@ -279,16 +313,50 @@ const App: React.FC = () => {
       const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
       const currentDayName = dayNames[now.getDay()];
       const currentDateString = now.toISOString().split('T')[0];
-      const teachersContext = teachers.map(t => `${t.name} (${t.role})`).join(', ');
-      const slotsContext = slots.map(s => `${s.day} @ ${s.time} - ${s.location}: ${s.teacherIds.map(id => teachers.find(t => t.id === id)?.name).join(', ')}`).join('; ');
-      const systemInstruction = `Anda SIR AKMAL, pengurus tugasan ${settings.schoolName}. Hari ini ${currentDayName} (${currentDateString}). GURU: ${teachersContext}. JADUAL: ${slotsContext}. Jawab soalan tugasan secara profesional and mesra.`;
+
+      // Sediakan maklumat guru dan jadual yang lengkap untuk AI
+      const teachersList = teachers.map(t => `${t.name} (Role: ${t.role}, ID: ${t.id})`).join('\n');
+      const slotsList = slots.map(s => {
+        const categoryName = CATEGORIES.find(c => c.id === s.categoryId)?.name || 'Unknown';
+        const teacherNames = s.teacherIds.map(tid => teachers.find(t => t.id === tid)?.name || 'Unknown').join(', ');
+        return `- ${categoryName}: ${s.day} (${s.date || 'Regular'}), ${s.time}, Location: ${s.location}, Teachers: ${teacherNames}`;
+      }).join('\n');
+      
+      let workStatus = dutyInfo.isWorkingThisWeek ? "Minggu ini Group B BERTUGAS." : "Minggu ini Group B TIDAK BERTUGAS.";
+      if (dutyInfo.hasArrivalData) {
+        workStatus += ` Jadual tugasan Group B bermula dari ${dutyInfo.startDate} sehingga ${dutyInfo.endDate}.`;
+      }
+      
+      const systemInstruction = `Anda SIR AKMAL, pengurus tugasan digital di ${settings.schoolName}. 
+      Hari ini ${currentDayName} (${currentDateString}).
+      
+      MAKLUMAT TUGASAN SEMASA:
+      STATUS TUGASAN GROUP B: ${workStatus}
+      
+      SENARAI GURU:
+      ${teachersList}
+      
+      JADUAL PENUH (SLOTS):
+      ${slotsList}
+      
+      PERATURAN JAWAPAN:
+      1. Jawab soalan pengguna dengan tepat berdasarkan data JADUAL di atas.
+      2. Jika ditanya siapa bertugas pada hari atau waktu tertentu, sebutkan nama guru.
+      3. Jika ditanya adakah minggu ini bertugas, rujuk STATUS TUGASAN GROUP B.
+      4. Gunakan Bahasa Melayu yang profesional, ringkas, dan mesra.
+      5. Jika data tidak wujud, katakan "Maaf, tiada dalam rekod hamba."`;
+
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: [{ role: 'user', parts: [{ text: systemInstruction }] }, ...chatMessages.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text }] })), { role: 'user', parts: [{ text: currentInput }] }],
+        contents: [
+          { role: 'user', parts: [{ text: systemInstruction }] }, 
+          ...chatMessages.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text }] })), 
+          { role: 'user', parts: [{ text: currentInput }] }
+        ],
       });
-      setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "Maaf, sistem AI sibuk." }]);
+      setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "Maaf saudara, sistem sedikit sibuk. Boleh ulang?" }]);
     } catch (error) {
-      setChatMessages(prev => [...prev, { role: 'ai', text: "Gagal menyambung ke AI." }]);
+      setChatMessages(prev => [...prev, { role: 'ai', text: "Gagal menyambung ke otak AI hamba." }]);
     } finally { setIsAiLoading(false); }
   };
 
@@ -296,17 +364,32 @@ const App: React.FC = () => {
     if (!selectedTeacherId) return;
     setIsGeneratingPdf(true);
 
-    let aiQuote = "Berkhidmatlah dengan ikhlas, kerana setiap kebaikan itu adalah sedekah.";
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: "Berikan satu kata-kata semangat atau mutiara kata yang sangat pendek untuk guru yang sedang bertugas, sertakan satu rujukan ringkas (sepotong ayat) dari Al-Quran atau Hadis yang berkaitan dengan amanah atau ganjaran beramal. Gunakan Bahasa Melayu yang puitis dan menyentuh hati. Maksimum 30 patah perkataan.",
-      });
-      if (response.text) aiQuote = response.text;
-    } catch (e) {
-      console.warn("AI Quote failed, using fallback.");
-    }
+// Letakkan quote yang sudah disahkan betul di sini sebagai default
+let aiQuote = `"Lelahmu mendidik adalah titian cahaya ke syurga. 'Sesungguhnya Allah tidak menyia-nyiakan pahala orang yang berbuat baik' (Surah Hud: 115). Teruslah menebar bakti, wahai Murabbi."`;
+
+try {
+  const genAI = new GoogleGenAI(process.env.API_KEY);
+  // Gunakan model gemini-1.5-flash (lebih stabil)
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+  const result = await model.generateContent(
+    "Berikan satu kata-kata semangat puitis untuk guru (Murabbi) dalam Bahasa Melayu. " +
+    "Sertakan satu potongan ayat Al-Quran atau Hadis yang RELEVAN. " +
+    "PENTING: Pastikan nombor surah dan ayat adalah TEPAT (Contoh: Surah Hud: 115 untuk 'pahala orang berbuat baik'). " +
+    "Maksimum 100 patah perkataan."
+  );
+
+  const response = await result.response;
+  const text = response.text();
+  
+  if (text) {
+    aiQuote = text; // Jika AI berjaya jana yang baru & betul, ia akan ganti quote di atas
+  }
+
+} catch (e) {
+  // Jika AI gagal/error, ia akan automatik guna ayat Surah Hud: 115 yang kita set kat atas tadi
+  console.warn("AI gagal, menggunakan ayat tetap Surah Hud: 115.");
+}
 
     const printContainer = document.createElement('div');
     printContainer.style.position = 'fixed';
@@ -372,7 +455,7 @@ const App: React.FC = () => {
         </div>
         
         <div style="margin-top: 30px; text-align: center; font-size: 9px; color: #9ca3af; font-weight: 700; text-transform: uppercase; letter-spacing: 0.2em;">
-          Generated by Duty Master AI System
+          أهلاً وسهلاً
         </div>
       </div>
     `;
@@ -429,6 +512,13 @@ const App: React.FC = () => {
   const youtubeId = useMemo(() => getYoutubeId(settings.musicUrl), [settings.musicUrl]);
   const masterCategoryOrder = ['breakfast', 'playtime', 'zuhur', 'lunch', 'dismissal'];
 
+  // Fungsi Helper untuk dapatkan hari dari tarikh
+  const getDayFromDate = (dateStr: string): Day => {
+    const d = new Date(dateStr);
+    const days: Day[] = ['Sunday' as any, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' as any];
+    return days[d.getDay()] || 'Monday';
+  };
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-x-hidden">
       <style>{`
@@ -449,9 +539,9 @@ const App: React.FC = () => {
       {/* Welcome Modal */}
       {showWelcome && (
         <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-xl flex items-center justify-center p-6 animate-fadeIn">
-          <div className="bg-white max-w-lg w-full p-10 rounded-[3.5rem] shadow-2xl text-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-50 rounded-full -ml-12 -mb-12"></div>
+          <div className="bg-white max-w-lg w-full p-10 rounded-[3.5rem] shadow-2xl text-center relative overflow-hidden border border-white/20">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-50 rounded-full -ml-12 -mb-12 opacity-50"></div>
             
             <div className="w-20 h-20 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-xl relative z-10">
               <Sparkles size={40} />
@@ -459,11 +549,43 @@ const App: React.FC = () => {
             
             <h2 className="text-2xl font-black uppercase italic tracking-tight text-gray-900 mb-6 relative z-10">Selamat Datang</h2>
             
-            <div className="space-y-2 relative z-10 mb-10">
-              <p className="text-gray-700 font-bold italic leading-relaxed text-sm">Sirih berlipat sirih pinang,</p>
-              <p className="text-gray-700 font-bold italic leading-relaxed text-sm">Hiasan sanggul buat penyeri;</p>
-              <p className="text-gray-700 font-bold italic leading-relaxed text-sm">Kehadiran tuan hati pun senang,</p>
-              <p className="text-gray-700 font-bold italic leading-relaxed text-sm">Semangat membara kental di diri.</p>
+            <div className="space-y-2 relative z-10 mb-8 p-6 bg-blue-50/30 rounded-[2rem] border border-blue-50">
+              <p className="text-gray-700 font-black italic leading-relaxed text-sm">Sirih berlipat sirih pinang,</p>
+              <p className="text-gray-700 font-black italic leading-relaxed text-sm">Hiasan sanggul buat penyeri;</p>
+              <p className="text-gray-700 font-black italic leading-relaxed text-sm">Kehadiran tuan hati pun senang,</p>
+              <p className="text-gray-700 font-black italic leading-relaxed text-sm">Semangat membara kental di diri.</p>
+            </div>
+
+            {/* Status Section */}
+            <div className="relative z-10 mb-8">
+               <div className={`p-5 rounded-3xl border flex flex-col gap-4 transition-all ${dutyInfo.isWorkingThisWeek ? 'bg-green-600 border-green-700 text-white shadow-xl scale-[1.02]' : 'bg-red-600 border-red-700 text-white shadow-xl scale-[1.02]'}`}>
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl bg-white/20 text-white shadow-lg`}>
+                      <Info size={24} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[10px] font-black uppercase opacity-80 leading-none mb-1">HARI INI KITA BERTUGAS?</p>
+                      <h4 className="text-lg font-black uppercase italic leading-none">{dutyInfo.isWorkingThisWeek ? 'GROUP B BERTUGAS' : 'GROUP B TIDAK BERTUGAS'}</h4>
+                    </div>
+                  </div>
+                  
+                  {dutyInfo.hasArrivalData && (
+                    <div className="text-left border-t border-white/20 pt-3">
+                      <p className="text-[9px] font-black uppercase opacity-80 mb-2">Maklumat Tempoh Tugasan</p>
+                      <div className="bg-white/10 p-3 rounded-2xl border border-white/5 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[9px] font-black uppercase opacity-80">Mula Tugas:</span>
+                          <span className="text-[11px] font-black text-right">{dutyInfo.startDate}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[9px] font-black uppercase opacity-80">Tamat Tugas:</span>
+                          <span className="text-[11px] font-black text-right">{dutyInfo.endDate}</span>
+                        </div>
+                      </div>
+                      <p className="text-[8px] font-bold mt-2 italic opacity-80">* Semoga saudara Diberkati Allah</p>
+                    </div>
+                  )}
+               </div>
             </div>
 
             <button 
@@ -584,18 +706,38 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                {DAYS.map(day => {
                   const daySlots = slots.filter(s => s.categoryId === 'arrival' && s.day === day);
+                  // Dapatkan senarai lokasi unik untuk hari ini
+                  const uniqueLocations = Array.from(new Set(daySlots.map(s => s.location)));
+                  
                   return (
-                    <div key={day} className="bg-white p-6 rounded-[2.5rem] border-2 border-yellow-400 shadow-sm">
+                    <div key={day} className="bg-white p-6 rounded-[2.5rem] border-2 border-yellow-400 shadow-sm min-h-[300px]">
                       <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4">
-                        <div className="flex flex-col"><span className="text-lg font-black uppercase text-gray-900">{day}</span>{daySlots.length > 0 && <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-lg w-fit mt-1">{formatDisplayDate(daySlots[0].date)}</span>}</div>
+                        <div className="flex flex-col">
+                          <span className="text-lg font-black uppercase text-gray-900">{day}</span>
+                          {daySlots.length > 0 && daySlots[0].date && (
+                            <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-lg w-fit mt-1">
+                              {formatDisplayDate(daySlots[0].date)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="space-y-4">
-                        {['Main Gate', 'Hall'].map(loc => (
+                        {uniqueLocations.length > 0 ? uniqueLocations.map(loc => (
                           <div key={loc} className="flex flex-col gap-1.5 p-3 bg-gray-50 rounded-2xl border border-gray-100">
                             <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">{loc}</span>
-                            <div className="flex flex-wrap gap-1.5">{daySlots.find(s => s.location === loc)?.teacherIds.map(tid => <span key={tid} className="bg-white px-2.5 py-1 rounded-lg text-[10px] font-black border border-gray-200 text-gray-700 shadow-sm">{teachers.find(t => t.id === tid)?.name}</span>)}</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {daySlots.filter(s => s.location === loc).flatMap(s => s.teacherIds).map(tid => (
+                                <span key={tid} className="bg-white px-2.5 py-1 rounded-lg text-[10px] font-black border border-gray-200 text-gray-700 shadow-sm">
+                                  {teachers.find(t => t.id === tid)?.name || 'Unknown'}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        ))}
+                        )) : (
+                          <div className="flex items-center justify-center py-10 opacity-20">
+                            <p className="text-[10px] font-black uppercase italic tracking-widest text-center">Tiada tugasan dijadualkan</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -632,6 +774,15 @@ const App: React.FC = () => {
                     {duty.date && <div className="text-[10px] font-black text-blue-600 uppercase bg-blue-50 px-3 py-1 rounded-lg w-fit mb-3">{formatDisplayDate(duty.date)}</div>}
                     <div className="text-sm font-black text-gray-900 mb-1">{duty.time}</div>
                     <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">@{duty.location}</div>
+                    
+                    <a 
+                      href={getGoogleCalendarLink(CATEGORIES.find(c => c.id === duty.categoryId)?.name || 'Duty', duty.day, duty.time, duty.location)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 flex items-center justify-center gap-2 w-full py-3 bg-gray-50 hover:bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase border border-gray-100 hover:border-blue-200 transition-all"
+                    >
+                      <Calendar size={14} /> Sync to Google Calendar
+                    </a>
                   </div>
                 ))}
               </div>
@@ -681,11 +832,26 @@ const App: React.FC = () => {
                     <div className="divide-y divide-gray-50">
                       {draftSlots.filter(s => s.categoryId === cat.id).map(slot => (
                           <div key={slot.id} className="p-6 hover:bg-gray-50/50">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className={`grid grid-cols-1 ${cat.id === 'arrival' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4`}>
                               <div className="space-y-1">
                                 <label className="text-[8px] font-black text-gray-400 uppercase">Day</label>
                                 <select className="w-full text-xs font-black bg-gray-50 p-3 rounded-2xl border border-gray-100 focus:border-blue-400 outline-none" value={slot.day} onChange={(e) => setDraftSlots(draftSlots.map(s => s.id === slot.id ? {...s, day: e.target.value as Day} : s))}> {DAYS.map(d => <option key={d} value={d}>{d}</option>)} </select>
                               </div>
+                              {cat.id === 'arrival' && (
+                                <div className="space-y-1">
+                                  <label className="text-[8px] font-black text-gray-400 uppercase">Date</label>
+                                  <input 
+                                    type="date" 
+                                    className="w-full text-xs font-black bg-gray-50 p-3 rounded-2xl border border-gray-100" 
+                                    value={slot.date || ''} 
+                                    onChange={(e) => {
+                                      const newDate = e.target.value;
+                                      const newDay = getDayFromDate(newDate);
+                                      setDraftSlots(draftSlots.map(s => s.id === slot.id ? {...s, date: newDate, day: newDay} : s));
+                                    }} 
+                                  />
+                                </div>
+                              )}
                               <div className="space-y-1">
                                 <label className="text-[8px] font-black text-gray-400 uppercase">Time</label>
                                 <input className="w-full text-xs font-black bg-gray-50 p-3 rounded-2xl border border-gray-100" value={slot.time} onChange={(e) => setDraftSlots(draftSlots.map(s => s.id === slot.id ? {...s, time: e.target.value} : s))} />

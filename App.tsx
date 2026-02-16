@@ -53,11 +53,13 @@ import {
   Bot,
   Loader2,
   TrendingUp,
-  Type,
-  Music as MusicIcon,
   Upload,
   Sparkles,
-  Info
+  Info,
+  Quote,
+  Layout,
+  Trophy,
+  CheckCircle2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -70,7 +72,7 @@ import {
 } from 'recharts';
 
 // ==========================================
-// 1. FIREBASE CONFIGURATION
+// FIREBASE CONFIGURATION
 // ==========================================
 const firebaseConfig = {
   apiKey: "AIzaSyBxCV54DUF2VrMD_jhPgYvgZ-8ugkG__og",
@@ -87,13 +89,14 @@ const db = getFirestore(app);
 
 try {
   enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') console.warn("Firestore persistence failed: Multiple tabs open.");
+    if (err.code === 'failed-precondition') console.warn("Firestore persistence failed.");
   });
 } catch (err) {}
 
 declare const html2canvas: any;
 declare const jspdf: any;
 
+// MASTER PASSWORD FOR SAFETY
 const MASTER_PASSWORD = "Wanhakim5";
 
 const App: React.FC = () => {
@@ -108,7 +111,7 @@ const App: React.FC = () => {
     musicUrl: '',
     adminPassword: 'Tinta12345',
     masterTitle: 'DUTY MASTER',
-    masterSubtitle: 'GROUP'
+    masterSubtitle: 'GROUP B'
   });
 
   const [isCloudLoading, setIsCloudLoading] = useState(true);
@@ -128,7 +131,6 @@ const App: React.FC = () => {
   ]);
   const [userInput, setUserInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
   
   const [draftSlots, setDraftSlots] = useState<DutySlot[]>([]);
   const [draftTeachers, setDraftTeachers] = useState<Teacher[]>([]);
@@ -149,11 +151,15 @@ const App: React.FC = () => {
     return dateStr;
   };
 
-  // Logik Semakan Status Bekerja & Julat Tarikh
+  const getDayFromDate = (dateStr: string): Day => {
+    const d = new Date(dateStr);
+    const dayNames: Day[] = ['Sunday' as any, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' as any];
+    return dayNames[d.getDay()] || 'Monday';
+  };
+
   const dutyInfo = useMemo(() => {
     const today = new Date();
     const day = today.getDay();
-    // Cari Isnin minggu ini
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(today);
     monday.setDate(diff);
@@ -168,7 +174,6 @@ const App: React.FC = () => {
     const arrivalSlots = slots.filter(s => s.categoryId === 'arrival' && s.date);
     const workingNow = arrivalSlots.some(s => s.date && weekDates.includes(s.date));
 
-    // Cari tarikh mula dan tamat daripada semua arrival duty yang ada
     const allDates = arrivalSlots.map(s => s.date as string).filter(Boolean).sort();
     const startDate = allDates.length > 0 ? formatDisplayDate(allDates[0]) : 'Tiada Data';
     const endDate = allDates.length > 0 ? formatDisplayDate(allDates[allDates.length - 1]) : 'Tiada Data';
@@ -186,19 +191,12 @@ const App: React.FC = () => {
       setIsMusicPlaying(true);
       document.removeEventListener('click', handleFirstInteraction);
       document.removeEventListener('touchstart', handleFirstInteraction);
-      document.removeEventListener('mousedown', handleFirstInteraction);
-      document.removeEventListener('keydown', handleFirstInteraction);
     };
     document.addEventListener('click', handleFirstInteraction);
     document.addEventListener('touchstart', handleFirstInteraction);
-    document.addEventListener('mousedown', handleFirstInteraction);
-    document.addEventListener('keydown', handleFirstInteraction);
-
     return () => {
       document.removeEventListener('click', handleFirstInteraction);
       document.removeEventListener('touchstart', handleFirstInteraction);
-      document.removeEventListener('mousedown', handleFirstInteraction);
-      document.removeEventListener('keydown', handleFirstInteraction);
     };
   }, []);
 
@@ -213,25 +211,21 @@ const App: React.FC = () => {
         setCloudStatus('synced');
       }
       setIsCloudLoading(false);
+    }, (error) => {
+      console.error("Firebase Sync Error:", error);
+      setCloudStatus('error');
+      setIsCloudLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
-
-  const hasUnsavedChanges = useMemo(() => {
-    return JSON.stringify(slots) !== JSON.stringify(draftSlots) ||
-           JSON.stringify(teachers) !== JSON.stringify(draftTeachers) ||
-           JSON.stringify(settings) !== JSON.stringify(draftSettings);
-  }, [slots, draftSlots, teachers, draftTeachers, settings, draftSettings]);
-
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    // MASTER_PASSWORD works as a safety override
     if (passwordInput === settings.adminPassword || passwordInput === MASTER_PASSWORD) {
       setIsAdminAuthenticated(true);
       setLoginError(false);
+      // Initialize drafts
       setDraftSlots(JSON.parse(JSON.stringify(slots)));
       setDraftTeachers(JSON.parse(JSON.stringify(teachers)));
       setDraftSettings(JSON.parse(JSON.stringify(settings)));
@@ -240,30 +234,156 @@ const App: React.FC = () => {
     }
   };
 
-  const saveToFirestore = async (t: Teacher[], s: DutySlot[], sett: AppSettings) => {
-    setIsCloudLoading(true);
-    try {
-      await setDoc(doc(db, "dutyMaster", "state"), {
-        teachers: t,
-        slots: s,
-        settings: sett,
-        lastUpdated: new Date().toISOString()
-      });
-      setCloudStatus('synced');
-    } catch (error) {
-      setCloudStatus('error');
-    } finally {
-      setIsCloudLoading(false);
+  const handleApplyChanges = async () => {
+    if (confirm("Simpan semua perubahan ke armada? Semua peranti lain akan dikemaskini secara automatik.")) {
+      setIsCloudLoading(true);
+      try {
+        await setDoc(doc(db, "dutyMaster", "state"), {
+          teachers: draftTeachers,
+          slots: draftSlots,
+          settings: draftSettings,
+          lastUpdated: new Date().toISOString()
+        });
+        
+        // Update local state to match cloud
+        setSlots(draftSlots);
+        setTeachers(draftTeachers);
+        setSettings(draftSettings);
+        
+        setCloudStatus('synced');
+        alert("Berjaya! Data telah disimpan ke armada.");
+      } catch (error) {
+        console.error("Save Error:", error);
+        setCloudStatus('error');
+        alert("Gagal menyimpan ke armada. Sila semak sambungan internet anda.");
+      } finally {
+        setIsCloudLoading(false);
+      }
     }
   };
 
-  const handleApplyChanges = async () => {
-    if (confirm("Simpan semua perubahan ke Armada?")) {
-      await saveToFirestore(draftTeachers, draftSlots, draftSettings);
-      setSlots(draftSlots);
-      setTeachers(draftTeachers);
-      setSettings(draftSettings);
-      setActiveView('dashboard');
+  const downloadTeacherPdf = async () => {
+    if (!selectedTeacherId) return;
+    setIsGeneratingPdf(true);
+    
+    let aiQuote = "Lelahmu adalah ibadah, sabarmu kunci syurga. Teruskan menyemai cahaya buat anak bangsa.";
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: "Berikan satu kata-kata semangat atau hikmah yang mendalam untuk seorang guru, sertakan rujukan ringkas dari Al-Quran atau Hadis. Gunakan Bahasa Melayu yang puitis. Maksimum 50 patah perkataan.",
+      });
+      if (response.text) aiQuote = response.text;
+    } catch (e) {
+      console.warn("AI Quote generation failed.");
+    }
+
+    const printContainer = document.createElement('div');
+    printContainer.style.position = 'fixed';
+    printContainer.style.left = '-9999px';
+    printContainer.style.top = '0';
+    printContainer.style.width = '800px'; 
+    printContainer.style.backgroundColor = 'white';
+    document.body.appendChild(printContainer);
+
+    const teacher = teachers.find(t => t.id === selectedTeacherId);
+    const teacherSlots = slots.filter(s => s.teacherIds.includes(selectedTeacherId)).sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day));
+
+    printContainer.innerHTML = `
+      <div style="padding: 60px; display: flex; flex-direction: column; background: white; font-family: 'Inter', sans-serif;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 5px solid #2563eb; padding-bottom: 25px; margin-bottom: 40px;">
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <img src="${settings.logoUrl}" style="width: 100px; height: 100px; object-fit: contain;">
+            <div>
+              <h1 style="font-size: 32px; font-weight: 900; color: #111827; margin: 0; text-transform: uppercase;">${settings.schoolName}</h1>
+              <p style="font-size: 14px; font-weight: 800; color: #2563eb; margin: 4px 0 0 0; text-transform: uppercase;">Jadual Tugasan Rasmi</p>
+            </div>
+          </div>
+        </div>
+        <div style="background: #eff6ff; padding: 35px; border-radius: 30px; border: 2px solid #dbeafe; margin-bottom: 40px;">
+          <h2 style="font-size: 26px; font-weight: 900; color: #1e40af; margin: 0; text-transform: uppercase;">${teacher?.name}</h2>
+          <p style="font-size: 14px; font-weight: 700; color: #60a5fa; margin: 5px 0 0 0; text-transform: uppercase;">SENARAI TUGASAN</p>
+        </div>
+        <div style="flex: 1;">
+          <div style="display: grid; grid-template-columns: 1fr; gap: 15px;">
+            ${teacherSlots.map(duty => `
+              <div style="background: white; padding: 25px; border-radius: 20px; border: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; break-inside: avoid;">
+                <div>
+                  <span style="font-size: 16px; font-weight: 900; color: #2563eb; text-transform: uppercase;">${duty.day}</span><br/>
+                  <span style="font-size: 15px; font-weight: 900; color: #111827;">${duty.time}</span><br/>
+                  <span style="font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase;">LOKASI: ${duty.location}</span>
+                  ${duty.date ? `<br/><span style="font-size: 10px; font-weight: 800; color: #3b82f6;">TARIKH: ${formatDisplayDate(duty.date)}</span>` : ''}
+                </div>
+                <span style="font-size: 10px; font-weight: 900; padding: 8px 15px; border-radius: 12px; background: #2563eb; color: white; text-transform: uppercase;">
+                  ${CATEGORIES.find(c => c.id === duty.categoryId)?.name}
+                </span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div style="margin-top: 60px; padding: 40px; border-radius: 40px; border: 1px dashed #cbd5e1; text-align: center; background: #f8fafc;">
+          <p style="font-size: 18px; font-weight: 700; color: #334155; line-height: 1.8; font-style: italic; margin-bottom: 25px;">"${aiQuote}"</p>
+          <div style="width: 80px; height: 3px; background: #2563eb; margin: 0 auto 20px auto;"></div>
+          <p style="font-size: 14px; font-weight: 900; color: #2563eb; text-transform: uppercase; letter-spacing: 0.2em; margin: 0;">IKHLAS DARIPADA SIR AKMAL</p>
+        </div>
+      </div>
+    `;
+
+    try {
+      await new Promise(r => setTimeout(r, 1000));
+      const canvas = await html2canvas(printContainer, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgProps = pdf.getImageProperties(imgData);
+      const imgHeight = (imgProps.height * pageWidth) / imgProps.width;
+      
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add the first page
+      pdf.addImage(imgData, 'PNG', 0, position, pageWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Add more pages if content is taller than one A4
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pageWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`Jadual_${teacher?.name}.pdf`);
+    } catch (error) {
+      console.error(error);
+      alert("Gagal muat turun PDF.");
+    } finally {
+      document.body.removeChild(printContainer);
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!userInput.trim() || isAiLoading) return;
+    const currentInput = userInput;
+    setUserInput('');
+    setChatMessages(prev => [...prev, { role: 'user', text: currentInput }]);
+    setIsAiLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Nama sekolah: ${settings.schoolName}. Anda adalah SIR AKMAL. Beri bantuan tentang tugasan: ${currentInput}. Cakap gaya melayu yang santai.`,
+      });
+      setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "saya pun tak pasti la sahabat." }]);
+    } catch (error) {
+      setChatMessages(prev => [...prev, { role: 'ai', text: "Gagal connect AI." }]);
+    } finally {
+      setIsAiLoading(false);
     }
   };
 
@@ -293,215 +413,16 @@ const App: React.FC = () => {
   };
 
   const isVideoUrl = (url: string) => url?.startsWith('data:video/') || url?.match(/\.(mp4|webm|ogg)$/i);
+  
   const getYoutubeId = (url: string | undefined) => {
     if (!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
+    // Enhanced regex for various YouTube URL formats
+    const match = url.match(/^.*(?:youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/);
+    return (match && match[1].length === 11) ? match[1] : null;
   };
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!userInput.trim() || isAiLoading) return;
-    const currentInput = userInput;
-    setUserInput('');
-    setChatMessages(prev => [...prev, { role: 'user', text: currentInput }]);
-    setIsAiLoading(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const now = new Date();
-      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-      const currentDayName = dayNames[now.getDay()];
-      const currentDateString = now.toISOString().split('T')[0];
 
-      // Sediakan maklumat guru dan jadual yang lengkap untuk AI
-      const teachersList = teachers.map(t => `${t.name} (Role: ${t.role}, ID: ${t.id})`).join('\n');
-      const slotsList = slots.map(s => {
-        const categoryName = CATEGORIES.find(c => c.id === s.categoryId)?.name || 'Unknown';
-        const teacherNames = s.teacherIds.map(tid => teachers.find(t => t.id === tid)?.name || 'Unknown').join(', ');
-        return `- ${categoryName}: ${s.day} (${s.date || 'Regular'}), ${s.time}, Location: ${s.location}, Teachers: ${teacherNames}`;
-      }).join('\n');
-      
-      let workStatus = dutyInfo.isWorkingThisWeek ? "Minggu ini Group B BERTUGAS." : "Minggu ini Group B TIDAK BERTUGAS.";
-      if (dutyInfo.hasArrivalData) {
-        workStatus += ` Jadual tugasan Group B bermula dari ${dutyInfo.startDate} sehingga ${dutyInfo.endDate}.`;
-      }
-      
-      const systemInstruction = `Anda SIR AKMAL, pengurus tugasan digital di ${settings.schoolName}. 
-      Hari ini ${currentDayName} (${currentDateString}).
-      
-      MAKLUMAT TUGASAN SEMASA:
-      STATUS TUGASAN GROUP B: ${workStatus}
-      
-      SENARAI GURU:
-      ${teachersList}
-      
-      JADUAL PENUH (SLOTS):
-      ${slotsList}
-      
-      PERATURAN JAWAPAN:
-      1. Jawab soalan pengguna dengan tepat berdasarkan data JADUAL di atas.
-      2. Jika ditanya siapa bertugas pada hari atau waktu tertentu, sebutkan nama guru.
-      3. Jika ditanya adakah minggu ini bertugas, rujuk STATUS TUGASAN GROUP B.
-      4. Gunakan Bahasa Melayu yang profesional, ringkas, dan mesra.
-      5. Jika data tidak wujud, katakan "Maaf, tiada dalam rekod hamba."`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [
-          { role: 'user', parts: [{ text: systemInstruction }] }, 
-          ...chatMessages.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.text }] })), 
-          { role: 'user', parts: [{ text: currentInput }] }
-        ],
-      });
-      setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "Maaf saudara, sistem sedikit sibuk. Boleh ulang?" }]);
-    } catch (error) {
-      setChatMessages(prev => [...prev, { role: 'ai', text: "Gagal menyambung ke otak AI hamba." }]);
-    } finally { setIsAiLoading(false); }
-  };
-
-  const downloadTeacherPdf = async () => {
-    if (!selectedTeacherId) return;
-    setIsGeneratingPdf(true);
-
-// Letakkan quote yang sudah disahkan betul di sini sebagai default
-let aiQuote = `"Lelahmu mendidik adalah titian cahaya ke syurga. 'Sesungguhnya Allah tidak menyia-nyiakan pahala orang yang berbuat baik' (Surah Hud: 115). Teruslah menebar bakti, wahai Murabbi."`;
-
-try {
-  const genAI = new GoogleGenAI(process.env.API_KEY);
-  // Gunakan model gemini-1.5-flash (lebih stabil)
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-  const result = await model.generateContent(
-    "Berikan satu kata-kata semangat puitis untuk guru (Murabbi) dalam Bahasa Melayu. " +
-    "Sertakan satu potongan ayat Al-Quran atau Hadis yang RELEVAN. " +
-    "PENTING: Pastikan nombor surah dan ayat adalah TEPAT (Contoh: Surah Hud: 115 untuk 'pahala orang berbuat baik'). " +
-    "Maksimum 100 patah perkataan."
-  );
-
-  const response = await result.response;
-  const text = response.text();
-  
-  if (text) {
-    aiQuote = text; // Jika AI berjaya jana yang baru & betul, ia akan ganti quote di atas
-  }
-
-} catch (e) {
-  // Jika AI gagal/error, ia akan automatik guna ayat Surah Hud: 115 yang kita set kat atas tadi
-  console.warn("AI gagal, menggunakan ayat tetap Surah Hud: 115.");
-}
-
-    const printContainer = document.createElement('div');
-    printContainer.style.position = 'fixed';
-    printContainer.style.left = '-9999px';
-    printContainer.style.top = '0';
-    printContainer.style.width = '800px'; 
-    printContainer.style.backgroundColor = 'white';
-    printContainer.style.padding = '0';
-    printContainer.style.fontFamily = "'Inter', sans-serif";
-    document.body.appendChild(printContainer);
-
-    const teacher = teachers.find(t => t.id === selectedTeacherId);
-    const teacherSlots = slots.filter(s => s.teacherIds.includes(selectedTeacherId)).sort((a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day));
-
-    printContainer.innerHTML = `
-      <div style="padding: 60px; min-height: 1000px; display: flex; flex-direction: column; background: white;">
-        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 5px solid #2563eb; padding-bottom: 25px; margin-bottom: 40px;">
-          <div style="display: flex; align-items: center; gap: 20px;">
-            <img src="${settings.logoUrl}" style="width: 100px; height: 100px; object-fit: contain;">
-            <div>
-              <h1 style="font-size: 32px; font-weight: 900; color: #111827; margin: 0; text-transform: uppercase; letter-spacing: -0.02em;">${settings.schoolName}</h1>
-              <p style="font-size: 14px; font-weight: 800; color: #2563eb; margin: 4px 0 0 0; text-transform: uppercase; letter-spacing: 0.2em;">Official Duty Schedule</p>
-            </div>
-          </div>
-          <div style="text-align: right;">
-            <p style="font-size: 10px; font-weight: 900; color: #9ca3af; text-transform: uppercase; margin: 0;">Date Generated</p>
-            <p style="font-size: 14px; font-weight: 800; color: #111827; margin: 2px 0 0 0;">${new Date().toLocaleDateString('ms-MY')}</p>
-          </div>
-        </div>
-
-        <div style="background: #eff6ff; padding: 35px; border-radius: 30px; border: 2px solid #dbeafe; margin-bottom: 40px; position: relative; overflow: hidden;">
-          <h2 style="font-size: 26px; font-weight: 900; color: #1e40af; margin: 0; text-transform: uppercase; position: relative; z-index: 1;">${teacher?.name}</h2>
-          <p style="font-size: 14px; font-weight: 700; color: #60a5fa; margin: 5px 0 0 0; text-transform: uppercase; letter-spacing: 0.1em; position: relative; z-index: 1;">${teacher?.role || 'Academic Staff'}</p>
-          <div style="position: absolute; right: -20px; bottom: -20px; opacity: 0.05; transform: rotate(-15deg);"><img src="${settings.logoUrl}" style="width: 150px; height: 150px;"></div>
-        </div>
-
-        <div style="flex: 1;">
-          <h3 style="font-size: 12px; font-weight: 900; color: #111827; text-transform: uppercase; letter-spacing: 0.3em; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-            <span style="width: 30px; height: 2px; background: #2563eb;"></span> Senarai Tugasan Mingguan
-          </h3>
-          <div style="display: grid; grid-template-columns: 1fr; gap: 15px;">
-            ${teacherSlots.map(duty => `
-              <div style="background: white; padding: 25px; border-radius: 20px; border: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); page-break-inside: avoid;">
-                <div style="display: flex; flex-direction: column; gap: 5px;">
-                  <span style="font-size: 16px; font-weight: 900; color: #2563eb; text-transform: uppercase; font-style: italic;">${duty.day}</span>
-                  <span style="font-size: 15px; font-weight: 900; color: #111827;">${duty.time}</span>
-                  <span style="font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase;">Lokasi: ${duty.location}</span>
-                </div>
-                <div style="text-align: right;">
-                   <span style="font-size: 10px; font-weight: 900; padding: 8px 15px; border-radius: 12px; background: #2563eb; color: white; text-transform: uppercase; letter-spacing: 0.05em;">
-                    ${CATEGORIES.find(c => c.id === duty.categoryId)?.name}
-                   </span>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-
-        <div style="margin-top: 60px; padding: 40px; background: #f8fafc; border-radius: 30px; border: 1px dashed #cbd5e1; text-align: center;">
-          <p style="font-size: 16px; font-weight: 700; color: #334155; line-height: 1.6; font-style: italic; margin-bottom: 15px;">"${aiQuote}"</p>
-          <div style="width: 50px; height: 3px; background: #2563eb; margin: 0 auto 15px auto;"></div>
-          <p style="font-size: 12px; font-weight: 900; color: #2563eb; text-transform: uppercase; letter-spacing: 0.1em; margin: 0;">Ikhlas daripada SIR AKMAL</p>
-        </div>
-        
-        <div style="margin-top: 30px; text-align: center; font-size: 9px; color: #9ca3af; font-weight: 700; text-transform: uppercase; letter-spacing: 0.2em;">
-          أهلاً وسهلاً
-        </div>
-      </div>
-    `;
-
-    try {
-      await new Promise(r => setTimeout(r, 1000));
-      const canvas = await html2canvas(printContainer, { 
-        scale: 2, 
-        useCORS: true, 
-        logging: false, 
-        backgroundColor: '#ffffff',
-        windowWidth: 800,
-        height: printContainer.scrollHeight 
-      });
-      
-      const imgData = canvas.toDataURL('image/png');
-      const { jsPDF } = jspdf;
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgProps = pdf.getImageProperties(imgData);
-      const imgHeight = (imgProps.height * pageWidth) / imgProps.width;
-
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, 'PNG', 0, position, pageWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, pageWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
-      pdf.save(`Jadual_Tugasan_${teacher?.name?.replace(/\s+/g, '_')}.pdf`);
-    } catch (error) {
-      console.error(error);
-      alert("Gagal memuat turun PDF. Sila cuba lagi.");
-    } finally {
-      document.body.removeChild(printContainer);
-      setIsGeneratingPdf(false);
-    }
-  };
-
+  const youtubeId = useMemo(() => getYoutubeId(settings.musicUrl), [settings.musicUrl]);
   const chartData = useMemo(() => {
     return teachers.map(t => ({ 
       name: t.name, 
@@ -509,179 +430,108 @@ try {
     })).sort((a, b) => b.duties - a.duties);
   }, [teachers, slots]);
 
-  const youtubeId = useMemo(() => getYoutubeId(settings.musicUrl), [settings.musicUrl]);
-  const masterCategoryOrder = ['breakfast', 'playtime', 'zuhur', 'lunch', 'dismissal'];
+  const hasUnsavedChanges = useMemo(() => {
+    const sCurrent = JSON.stringify(slots);
+    const sDraft = JSON.stringify(draftSlots);
+    const tCurrent = JSON.stringify(teachers);
+    const tDraft = JSON.stringify(draftTeachers);
+    const setCurrent = JSON.stringify(settings);
+    const setDraft = JSON.stringify(draftSettings);
+    
+    return sCurrent !== sDraft || tCurrent !== tDraft || setCurrent !== setDraft;
+  }, [slots, draftSlots, teachers, draftTeachers, settings, draftSettings]);
 
-  // Fungsi Helper untuk dapatkan hari dari tarikh
-  const getDayFromDate = (dateStr: string): Day => {
-    const d = new Date(dateStr);
-    const days: Day[] = ['Sunday' as any, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' as any];
-    return days[d.getDay()] || 'Monday';
-  };
+  // Specific workload for selected teacher (strictly excluding Arrival Duty)
+  const selectedTeacherWorkload = useMemo(() => {
+    if (!selectedTeacherId) return 0;
+    return slots.filter(s => s.teacherIds.includes(selectedTeacherId) && s.categoryId !== 'arrival').length;
+  }, [selectedTeacherId, slots]);
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-x-hidden">
-      <style>{`
-        body { overflow-x: hidden; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        @media (max-width: 640px) {
-          .mobile-stack table, .mobile-stack thead, .mobile-stack tbody, .mobile-stack th, .mobile-stack td, .mobile-stack tr { display: block; }
-          .mobile-stack thead tr { position: absolute; top: -9999px; left: -9999px; }
-          .mobile-stack tr { margin-bottom: 1rem; border: 1px solid #f3f4f6; border-radius: 1.5rem; overflow: hidden; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-          .mobile-stack td { border: none !important; position: relative; padding: 0.75rem 1rem 0.75rem 40% !important; text-align: right !important; min-height: 40px; display: flex; align-items: center; justify-content: flex-end; border-bottom: 1px solid #f8fafc !important; }
-          .mobile-stack td:before { content: attr(data-label); position: absolute; left: 1rem; width: 35%; text-align: left; font-weight: 900; text-transform: uppercase; font-size: 8px; color: #9ca3af; }
-          .mobile-stack td:last-child { border-bottom: none !important; }
-        }
-        @keyframes music-bars { 0%, 100% { height: 2px; } 50% { height: 12px; } }
-        .music-bar { animation: music-bars 1s ease-in-out infinite; }
-      `}</style>
-
-      {/* Welcome Modal */}
-      {showWelcome && (
-        <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-xl flex items-center justify-center p-6 animate-fadeIn">
-          <div className="bg-white max-w-lg w-full p-10 rounded-[3.5rem] shadow-2xl text-center relative overflow-hidden border border-white/20">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-50 rounded-full -ml-12 -mb-12 opacity-50"></div>
-            
-            <div className="w-20 h-20 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-xl relative z-10">
-              <Sparkles size={40} />
-            </div>
-            
-            <h2 className="text-2xl font-black uppercase italic tracking-tight text-gray-900 mb-6 relative z-10">Selamat Datang</h2>
-            
-            <div className="space-y-2 relative z-10 mb-8 p-6 bg-blue-50/30 rounded-[2rem] border border-blue-50">
-              <p className="text-gray-700 font-black italic leading-relaxed text-sm">Sirih berlipat sirih pinang,</p>
-              <p className="text-gray-700 font-black italic leading-relaxed text-sm">Hiasan sanggul buat penyeri;</p>
-              <p className="text-gray-700 font-black italic leading-relaxed text-sm">Kehadiran tuan hati pun senang,</p>
-              <p className="text-gray-700 font-black italic leading-relaxed text-sm">Semangat membara kental di diri.</p>
-            </div>
-
-            {/* Status Section */}
-            <div className="relative z-10 mb-8">
-               <div className={`p-5 rounded-3xl border flex flex-col gap-4 transition-all ${dutyInfo.isWorkingThisWeek ? 'bg-green-600 border-green-700 text-white shadow-xl scale-[1.02]' : 'bg-red-600 border-red-700 text-white shadow-xl scale-[1.02]'}`}>
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-2xl bg-white/20 text-white shadow-lg`}>
-                      <Info size={24} />
-                    </div>
-                    <div className="text-left">
-                      <p className="text-[10px] font-black uppercase opacity-80 leading-none mb-1">HARI INI KITA BERTUGAS?</p>
-                      <h4 className="text-lg font-black uppercase italic leading-none">{dutyInfo.isWorkingThisWeek ? 'GROUP B BERTUGAS' : 'GROUP B TIDAK BERTUGAS'}</h4>
-                    </div>
-                  </div>
-                  
-                  {dutyInfo.hasArrivalData && (
-                    <div className="text-left border-t border-white/20 pt-3">
-                      <p className="text-[9px] font-black uppercase opacity-80 mb-2">Maklumat Tempoh Tugasan</p>
-                      <div className="bg-white/10 p-3 rounded-2xl border border-white/5 space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[9px] font-black uppercase opacity-80">Mula Tugas:</span>
-                          <span className="text-[11px] font-black text-right">{dutyInfo.startDate}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[9px] font-black uppercase opacity-80">Tamat Tugas:</span>
-                          <span className="text-[11px] font-black text-right">{dutyInfo.endDate}</span>
-                        </div>
-                      </div>
-                      <p className="text-[8px] font-bold mt-2 italic opacity-80">* Semoga saudara Diberkati Allah</p>
-                    </div>
-                  )}
-               </div>
-            </div>
-
-            <button 
-              onClick={() => setShowWelcome(false)}
-              className="w-full bg-blue-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg hover:bg-blue-700 active:scale-95 transition-all relative z-10"
-            >
-              Mula Bertugas
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isGeneratingPdf && (
-        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fadeIn">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-4">
-            <Loader2 size={48} className="text-blue-600 animate-spin" />
-            <h3 className="text-lg font-black uppercase italic tracking-tight text-center text-gray-900">Sabar Itu Indah, <br/> Harap tenang</h3>
-          </div>
-        </div>
-      )}
-
-      {isMusicPlaying && youtubeId && (
-        <div className="fixed opacity-0 pointer-events-none w-1 h-1 overflow-hidden z-[-1]">
-          <iframe 
-            key={youtubeId}
-            width="560" 
-            height="315" 
-            src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&mute=0&loop=1&playlist=${youtubeId}`} 
-            title="YouTube Player" 
-            allow="autoplay; encrypted-media" 
-            allowFullScreen>
-          </iframe>
-        </div>
-      )}
-
+      {/* Background Layer */}
       <div className="fixed inset-0 z-0">
-        {isVideoUrl(settings.backgroundUrl) ? <video src={settings.backgroundUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline /> : <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${settings.backgroundUrl})` }} />}
+        {isVideoUrl(settings.backgroundUrl) ? (
+          <video src={settings.backgroundUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline />
+        ) : (
+          <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${settings.backgroundUrl})` }} />
+        )}
+        <div className="absolute inset-0 bg-white/5 backdrop-blur-[0.5px]" />
       </div>
 
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm no-print">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-2 cursor-pointer group" onClick={() => setActiveView('dashboard')}>
-            <div className="p-1 bg-white rounded-lg shadow-sm border border-gray-100 group-hover:scale-105 transition-transform"><img src={settings.logoUrl} alt="Logo" className="w-8 h-8 object-contain" /></div>
-            <div className="hidden xs:block"><h1 className="text-xs font-black uppercase text-gray-900">{settings.schoolName}</h1></div>
+      {/* Music Layer - Fixed with allow="autoplay" */}
+      {isMusicPlaying && youtubeId && (
+        <div className="fixed opacity-0 pointer-events-none">
+          <iframe 
+            src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&loop=1&playlist=${youtubeId}&enablejsapi=1`} 
+            allow="autoplay"
+          />
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200 h-16 flex items-center px-4 justify-between shadow-sm no-print">
+          <div className="flex items-center space-x-2 cursor-pointer" onClick={() => setActiveView('dashboard')}>
+            <img src={settings.logoUrl} className="w-8 h-8 object-contain" alt="Logo" />
+            <h1 className="text-xs font-black uppercase text-gray-900 hidden sm:block">{settings.schoolName}</h1>
           </div>
-          <nav className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar py-2">
-            <button onClick={() => { setActiveView('dashboard'); setIsAdminAuthenticated(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${activeView === 'dashboard' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-white/50'}`}><LayoutDashboard size={18} /><span className="text-[10px] font-bold sm:block hidden uppercase">Master</span></button>
-            <button onClick={() => { setActiveView('arrival-duty'); setIsAdminAuthenticated(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${activeView === 'arrival-duty' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-white/50'}`}><Clock size={18} /><span className="text-[10px] font-bold sm:block hidden uppercase">Arrival</span></button>
-            <button onClick={() => { setActiveView('teacher-view'); setIsAdminAuthenticated(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${activeView === 'teacher-view' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-white/50'}`}><Search size={18} /><span className="text-[10px] font-bold sm:block hidden uppercase">Semak</span></button>
-            <button onClick={() => { setActiveView('tracker'); setIsAdminAuthenticated(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${activeView === 'tracker' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-white/50'}`}><BarChart3 size={18} /><span className="text-[10px] font-bold sm:block hidden uppercase">Tracker</span></button>
-            <button onClick={() => setActiveView('admin')} className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${activeView === 'admin' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-white/50'}`}><Settings size={18} /><span className="text-[10px] font-bold sm:block hidden uppercase">Admin</span></button>
+          <nav className="flex items-center space-x-2">
+            <button onClick={() => setActiveView('dashboard')} className={`p-2 rounded-xl transition-all ${activeView === 'dashboard' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600'}`}><LayoutDashboard size={18} /></button>
+            <button onClick={() => setActiveView('arrival-duty')} className={`p-2 rounded-xl transition-all ${activeView === 'arrival-duty' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600'}`}><Clock size={18} /></button>
+            <button onClick={() => setActiveView('teacher-view')} className={`p-2 rounded-xl transition-all ${activeView === 'teacher-view' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600'}`}><Search size={18} /></button>
+            <button onClick={() => setActiveView('tracker')} className={`p-2 rounded-xl transition-all ${activeView === 'tracker' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600'}`}><BarChart3 size={18} /></button>
+            <button onClick={() => setActiveView('admin')} className={`p-2 rounded-xl transition-all ${activeView === 'admin' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600'}`}><Settings size={18} /></button>
           </nav>
           <div className="flex items-center space-x-2">
-             {youtubeId && <button onClick={() => setIsMusicPlaying(!isMusicPlaying)} className={`p-2 rounded-xl flex items-center gap-1.5 transition-all ${isMusicPlaying ? 'bg-red-600 text-white shadow-lg scale-105' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-                {isMusicPlaying ? <Volume2 size={16} /> : <VolumeX size={16} />}
-                {isMusicPlaying && <div className="flex items-end gap-0.5 h-3"><div className="music-bar w-0.5 bg-white"></div><div className="music-bar w-0.5 bg-white" style={{animationDelay:'0.2s'}}></div><div className="music-bar w-0.5 bg-white" style={{animationDelay:'0.4s'}}></div></div>}
-             </button>}
-             <div className={`p-2 rounded-xl ${cloudStatus === 'synced' ? 'text-green-600' : 'text-amber-500'}`}>{isCloudLoading ? <RefreshCw className="animate-spin" size={18} /> : <Cloud size={18} />}</div>
+             {youtubeId && (
+               <button 
+                onClick={() => setIsMusicPlaying(!isMusicPlaying)} 
+                className={`p-2 rounded-xl ${isMusicPlaying ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-400'}`}
+                title={isMusicPlaying ? "Hentikan Musik" : "Pasang Musik"}
+               >
+                 {isMusicPlaying ? <Volume2 size={16} /> : <VolumeX size={16} />}
+               </button>
+             )}
+             <div className="p-2 text-green-600">
+               {isCloudLoading ? <RefreshCw className="animate-spin" size={18} /> : (cloudStatus === 'synced' ? <Cloud size={18} /> : <AlertCircle className="text-red-500" size={18} />)}
+             </div>
           </div>
-        </div>
       </header>
 
-      <main className="relative z-10 flex-1 max-w-7xl mx-auto w-full px-4 py-6 mb-24">
+      {/* Main Content */}
+      <main className="relative z-10 flex-1 max-w-7xl mx-auto w-full px-4 py-6">
         {activeView === 'dashboard' && (
           <div className="space-y-6 animate-fadeIn">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="md:col-span-2 bg-blue-600 p-8 rounded-[2.5rem] shadow-xl text-white flex justify-between items-center relative overflow-hidden group">
-                 <div className="relative z-10"><h2 className="text-3xl font-black uppercase italic leading-none tracking-tight">{settings.masterTitle}</h2><p className="text-[10px] font-bold opacity-80 uppercase tracking-widest mt-2">{settings.masterSubtitle}</p></div>
-                 <Calendar size={48} className="relative z-10 opacity-40 group-hover:scale-110 transition-transform" />
-              </div>
-              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col justify-between">
-                <div className="flex justify-between items-start"><div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><TrendingUp size={24} /></div><span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Load Summary</span></div>
-                <div><h4 className="text-xs font-black uppercase text-gray-900 mb-2">Most Active:</h4><div className="flex items-center gap-2"><div className="w-8 h-8 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-[10px] font-black uppercase">{chartData[0]?.name.substring(0,2)}</div><div><p className="text-[10px] font-black text-gray-900 uppercase leading-none">{chartData[0]?.name}</p><p className="text-[8px] font-bold text-gray-400 uppercase">{chartData[0]?.duties} Tasks</p></div></div></div>
-              </div>
+            <div className="bg-blue-600 p-8 rounded-[2.5rem] shadow-xl text-white flex justify-between items-center group overflow-hidden">
+               <div className="relative z-10">
+                 <h2 className="text-3xl font-black uppercase italic tracking-tight">{settings.masterTitle}</h2>
+                 <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest mt-2">{settings.masterSubtitle}</p>
+               </div>
+               <Calendar size={48} className="opacity-40 group-hover:scale-110 transition-transform" />
             </div>
 
             <div className="space-y-6">
-              {masterCategoryOrder.map(catId => {
+              {['breakfast', 'playtime', 'zuhur', 'lunch', 'dismissal'].map(catId => {
                 const cat = CATEGORIES.find(c => c.id === catId);
                 if (!cat) return null;
                 return (
-                  <div key={cat.id} className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden group hover:shadow-md transition-shadow">
+                  <div key={cat.id} className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden">
                     <div className={`px-6 py-4 ${cat.color} border-b-2 font-black uppercase text-[11px] text-gray-800 tracking-widest`}>{cat.name}</div>
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left mobile-stack">
-                        <thead className="hidden sm:table-header-group bg-gray-50/50 text-[9px] font-black text-gray-400 uppercase border-b">
-                          <tr><th className="px-6 py-4">Hari</th><th className="px-6 py-4">Kumpulan</th><th className="px-6 py-4">Slot</th><th className="px-6 py-4">Guru</th></tr>
+                      <table className="w-full text-left">
+                        <thead className="bg-gray-50/50 text-[9px] font-black text-gray-400 uppercase border-b">
+                          <tr><th className="px-6 py-4">Hari</th><th className="px-6 py-4">Slot</th><th className="px-6 py-4">Guru</th></tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {DAYS.map(day => slots.filter(s => s.categoryId === cat.id && s.day === day).map(slot => (
                             <tr key={slot.id} className="hover:bg-blue-50/20 transition-colors">
-                              <td className="px-6 py-4 font-black text-blue-700 text-xs" data-label="Hari">{day.toUpperCase()}</td>
-                              <td className="px-6 py-4" data-label="Kumpulan"><span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-[9px] font-black uppercase border border-gray-200">{slot.group}</span></td>
-                              <td className="px-6 py-4" data-label="Slot"><div className="font-black text-gray-900 text-xs">{slot.time}</div><div className="text-[9px] font-bold text-gray-400 uppercase italic">@{slot.location}</div></td>
-                              <td className="px-6 py-4" data-label="Guru">
-                                <div className="flex flex-wrap gap-1.5 sm:justify-start justify-end">
+                              <td className="px-6 py-4 font-black text-blue-700 text-xs">{day.toUpperCase()}</td>
+                              <td className="px-6 py-4">
+                                <div className="font-black text-gray-900 text-xs">{slot.time}</div>
+                                <div className="text-[9px] font-bold text-gray-400 uppercase italic">@{slot.location}</div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex flex-wrap gap-1.5">
                                   {slot.teacherIds.map(tid => <span key={tid} className="px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-black border border-blue-100 shadow-sm">{teachers.find(t => t.id === tid)?.name || 'N/A'}</span>)}
                                 </div>
                               </td>
@@ -699,49 +549,33 @@ try {
 
         {activeView === 'arrival-duty' && (
           <div className="space-y-6 animate-fadeIn max-w-5xl mx-auto">
-            <div className="bg-yellow-400 p-8 rounded-[3rem] shadow-xl text-gray-900 flex justify-between items-center overflow-hidden relative">
+            <div className="bg-yellow-400 p-8 rounded-[3rem] shadow-xl text-gray-900 flex justify-between items-center">
                <div className="relative z-10"><h2 className="text-3xl font-black uppercase italic">Arrival Duty</h2><p className="text-[10px] font-black opacity-80 uppercase mt-1">Sesi Pagi: 7.30 am – 8.00 am</p></div>
-               <Clock size={48} className="relative z-10" />
+               <Clock size={48} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-               {DAYS.map(day => {
-                  const daySlots = slots.filter(s => s.categoryId === 'arrival' && s.day === day);
-                  // Dapatkan senarai lokasi unik untuk hari ini
-                  const uniqueLocations = Array.from(new Set(daySlots.map(s => s.location)));
-                  
-                  return (
-                    <div key={day} className="bg-white p-6 rounded-[2.5rem] border-2 border-yellow-400 shadow-sm min-h-[300px]">
+               {DAYS.map((day, idx) => {
+                 const daySlots = slots.filter(s => s.categoryId === 'arrival' && s.day === day);
+                 return (
+                    <div key={idx} className="bg-white p-6 rounded-[2.5rem] border-2 border-yellow-400 shadow-sm min-h-[250px]">
                       <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4">
                         <div className="flex flex-col">
                           <span className="text-lg font-black uppercase text-gray-900">{day}</span>
-                          {daySlots.length > 0 && daySlots[0].date && (
-                            <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-lg w-fit mt-1">
-                              {formatDisplayDate(daySlots[0].date)}
-                            </span>
-                          )}
+                          {daySlots[0]?.date && <span className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-lg w-fit mt-1">{formatDisplayDate(daySlots[0].date)}</span>}
                         </div>
                       </div>
                       <div className="space-y-4">
-                        {uniqueLocations.length > 0 ? uniqueLocations.map(loc => (
-                          <div key={loc} className="flex flex-col gap-1.5 p-3 bg-gray-50 rounded-2xl border border-gray-100">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">{loc}</span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {daySlots.filter(s => s.location === loc).flatMap(s => s.teacherIds).map(tid => (
-                                <span key={tid} className="bg-white px-2.5 py-1 rounded-lg text-[10px] font-black border border-gray-200 text-gray-700 shadow-sm">
-                                  {teachers.find(t => t.id === tid)?.name || 'Unknown'}
-                                </span>
-                              ))}
-                            </div>
+                        {daySlots.map(s => (
+                          <div key={s.id} className="p-3 bg-gray-50 rounded-2xl border border-gray-100">
+                             <span className="text-[9px] font-black uppercase text-gray-400">{s.location}</span>
+                             <div className="flex flex-wrap gap-1.5 mt-1">
+                                {s.teacherIds.map(tid => <span key={tid} className="bg-white px-2 rounded-lg text-[10px] font-black border border-gray-200 text-gray-700">{teachers.find(t => t.id === tid)?.name || 'N/A'}</span>)}
+                             </div>
                           </div>
-                        )) : (
-                          <div className="flex items-center justify-center py-10 opacity-20">
-                            <p className="text-[10px] font-black uppercase italic tracking-widest text-center">Tiada tugasan dijadualkan</p>
-                          </div>
-                        )}
+                        ))}
                       </div>
                     </div>
-                  );
-               })}
+               )})}
             </div>
           </div>
         )}
@@ -751,36 +585,52 @@ try {
             <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-gray-100 text-center">
               <div className="w-20 h-20 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl"><Search size={40} /></div>
               <h2 className="text-2xl font-black mb-1 uppercase italic text-gray-900">Semak Jadual</h2>
-              <div className="space-y-4">
-                <select className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl font-black text-gray-700 text-xs text-center outline-none focus:border-blue-500 transition-all appearance-none" value={selectedTeacherId} onChange={(e) => setSelectedTeacherId(e.target.value)}>
+              
+              <div className="space-y-6">
+                <select className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl font-black text-gray-700 text-xs text-center outline-none focus:border-blue-500 appearance-none transition-all" value={selectedTeacherId} onChange={(e) => setSelectedTeacherId(e.target.value)}>
                   <option value="">-- PILIH NAMA GURU --</option>
                   {teachers.sort((a,b) => a.name.localeCompare(b.name)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
+
                 {selectedTeacherId && (
-                  <div className="flex items-center justify-between p-5 bg-blue-50 rounded-[2rem] border border-blue-100">
-                    <div className="text-left"><p className="text-[10px] font-black text-blue-600 uppercase leading-none">Total Tasks</p><h4 className="text-2xl font-black text-blue-800 mt-1">{slots.filter(s => s.teacherIds.includes(selectedTeacherId)).length}</h4></div>
-                    <button onClick={downloadTeacherPdf} disabled={isGeneratingPdf} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-4 rounded-2xl font-black text-xs uppercase shadow-xl hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50">
-                      {isGeneratingPdf ? <Loader2 className="animate-spin" size={18} /> : <FileText size={18} />} {isGeneratingPdf ? 'Wait...' : 'Download PDF'}
+                  <div className="animate-fadeIn">
+                    {/* Workload Stats Card */}
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-3xl p-5 mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg">
+                          <Trophy size={20} />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[9px] font-black uppercase text-gray-400 leading-none mb-1">BEBAN KERJA (KECUALI ARRIVAL):</p>
+                          <h4 className={`text-xl font-black leading-none ${selectedTeacherWorkload > 5 ? 'text-red-600' : 'text-blue-700'}`}>
+                            {selectedTeacherWorkload} TUGASAN
+                          </h4>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button onClick={downloadTeacherPdf} disabled={isGeneratingPdf} className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white p-5 rounded-3xl font-black text-xs uppercase shadow-xl hover:bg-blue-700 active:scale-95 transition-all">
+                      {isGeneratingPdf ? <Loader2 className="animate-spin" size={18} /> : <FileText size={18} />} {isGeneratingPdf ? 'Pdf' : 'Download PDF'}
                     </button>
                   </div>
                 )}
               </div>
             </div>
+
             {selectedTeacherId && (
               <div className="space-y-4">
                 {slots.filter(s => s.teacherIds.includes(selectedTeacherId)).sort((a,b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day)).map(duty => (
                   <div key={duty.id} className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm hover:border-blue-200 transition-all">
-                    <div className="flex items-center justify-between mb-3"><span className="text-sm font-black uppercase text-blue-700 italic">{duty.day}</span><span className={`text-[9px] font-black px-2 py-1 rounded-lg uppercase text-white ${duty.categoryId === 'arrival' ? 'bg-yellow-500' : 'bg-blue-600'}`}>{CATEGORIES.find(c => c.id === duty.categoryId)?.name}</span></div>
-                    {duty.date && <div className="text-[10px] font-black text-blue-600 uppercase bg-blue-50 px-3 py-1 rounded-lg w-fit mb-3">{formatDisplayDate(duty.date)}</div>}
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-black uppercase text-blue-700 italic">{duty.day}</span>
+                      <span className={`text-[9px] font-black px-2 py-1 rounded-lg uppercase text-white ${duty.categoryId === 'arrival' ? 'bg-yellow-500' : 'bg-blue-600'}`}>
+                        {CATEGORIES.find(c => c.id === duty.categoryId)?.name}
+                      </span>
+                    </div>
+                    {duty.date && <div className="text-[10px] font-black text-blue-600 uppercase bg-blue-50 px-2 py-1 rounded-lg w-fit mb-2">{formatDisplayDate(duty.date)}</div>}
                     <div className="text-sm font-black text-gray-900 mb-1">{duty.time}</div>
                     <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">@{duty.location}</div>
-                    
-                    <a 
-                      href={getGoogleCalendarLink(CATEGORIES.find(c => c.id === duty.categoryId)?.name || 'Duty', duty.day, duty.time, duty.location)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-4 flex items-center justify-center gap-2 w-full py-3 bg-gray-50 hover:bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase border border-gray-100 hover:border-blue-200 transition-all"
-                    >
+                    <a href={getGoogleCalendarLink(CATEGORIES.find(c => c.id === duty.categoryId)?.name || 'Duty', duty.day, duty.time, duty.location)} target="_blank" rel="noopener noreferrer" className="mt-4 flex items-center justify-center gap-2 w-full py-3 bg-gray-50 hover:bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase border border-gray-100 hover:border-blue-200 transition-all">
                       <Calendar size={14} /> Sync to Google Calendar
                     </a>
                   </div>
@@ -792,89 +642,105 @@ try {
 
         {activeView === 'tracker' && (
           <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
-            <div className="bg-indigo-600 p-8 rounded-[3rem] shadow-xl text-white flex justify-between items-center relative overflow-hidden">
-              <div className="relative z-10"><h2 className="text-3xl font-black uppercase italic">Teacher Tracker</h2><p className="text-[10px] font-bold opacity-80 uppercase tracking-widest mt-1">Weekly Workload Analysis</p></div>
-              <BarChart3 size={48} className="relative z-10" />
+            <div className="bg-indigo-600 p-8 rounded-[3rem] shadow-xl text-white flex justify-between items-center">
+              <div className="relative z-10"><h2 className="text-3xl font-black uppercase italic">Teacher Tracker</h2><p className="text-[10px] font-bold opacity-80 uppercase tracking-widest mt-1">Workload Analysis</p></div>
+              <BarChart3 size={48} />
             </div>
-            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-gray-100 h-[500px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 30, top: 20, bottom: 20 }}>
-                  <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 9, fontWeight: 'bold', fill: '#64748b' }} />
-                  <Tooltip cursor={{ fill: '#f8fafc', radius: 12 }} contentStyle={{ borderRadius: '20px', border: 'none', fontSize: '11px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
-                  <Bar dataKey="duties" radius={[0, 8, 8, 0]} barSize={16}>
-                    {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.duties > 4 ? '#ef4444' : '#3b82f6'} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-gray-100 min-h-[500px]">
+              <div className="h-[450px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 30, top: 20, bottom: 20 }}>
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 9, fontWeight: 'black', fill: '#374151' }} />
+                    <Tooltip contentStyle={{ borderRadius: '15px', fontWeight: 'bold', fontSize: '10px' }} />
+                    <Bar dataKey="duties" radius={[0, 8, 8, 0]} barSize={16}>
+                      {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.duties > 5 ? '#ef4444' : '#3b82f6'} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-4 p-4 bg-gray-50 rounded-2xl flex items-center gap-3">
+                 <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                 <p className="text-[10px] font-black uppercase text-gray-500 tracking-wider">GURU DENGAN MELEBIHI 5 TUGASAN DIPAPARKAN DALAM WARNA MERAH</p>
+              </div>
             </div>
           </div>
         )}
 
         {activeView === 'admin' && isAdminAuthenticated && (
-          <div className="animate-fadeIn max-w-5xl mx-auto space-y-6">
-            <div className="bg-white p-4 rounded-[2.5rem] shadow-xl border flex gap-3 overflow-x-auto no-scrollbar">
-               <button onClick={() => setAdminTab('slots')} className={`px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 transition-all ${adminTab === 'slots' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 bg-gray-50'}`}><Calendar size={16}/> Slots Editor</button>
-               <button onClick={() => setAdminTab('teachers')} className={`px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 transition-all ${adminTab === 'teachers' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 bg-gray-50'}`}><Users size={16}/> Teachers List</button>
-               <button onClick={() => setAdminTab('settings')} className={`px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 transition-all ${adminTab === 'settings' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 bg-gray-50'}`}><ImageIcon size={16}/> Design Settings</button>
-               <button onClick={() => setIsAdminAuthenticated(false)} className="ml-auto px-6 py-4 bg-red-50 text-red-600 rounded-2xl text-[10px] font-black uppercase hover:bg-red-100 transition-colors">Exit Admin</button>
+          <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn pb-32">
+            <div className="bg-white p-4 rounded-[2.5rem] shadow-xl border flex gap-3 overflow-x-auto no-scrollbar items-center">
+               <button onClick={() => setAdminTab('slots')} className={`px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 ${adminTab === 'slots' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 bg-gray-50'}`}><Calendar size={16}/> Slots</button>
+               <button onClick={() => setAdminTab('teachers')} className={`px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 ${adminTab === 'teachers' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 bg-gray-50'}`}><Users size={16}/> Teachers</button>
+               <button onClick={() => setAdminTab('settings')} className={`px-6 py-4 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 ${adminTab === 'settings' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 bg-gray-50'}`}><Layout size={16}/> Design & Settings</button>
+               
+               <div className="ml-auto flex items-center gap-4">
+                 <div className="hidden sm:flex items-center gap-2 text-[9px] font-black uppercase text-gray-400">
+                   {hasUnsavedChanges ? (
+                     <span className="flex items-center gap-1 text-amber-500"><AlertCircle size={12}/> Unsaved</span>
+                   ) : (
+                     <span className="flex items-center gap-1 text-green-500"><CheckCircle2 size={12}/> Synced</span>
+                   )}
+                 </div>
+                 <button onClick={() => setIsAdminAuthenticated(false)} className="px-6 py-4 text-red-500 font-black uppercase text-[10px] hover:bg-red-50 rounded-2xl transition-colors">Logout</button>
+               </div>
             </div>
 
             {adminTab === 'slots' && (
-              <div className="bg-white p-8 rounded-[3rem] border shadow-2xl space-y-8">
-                 <h3 className="text-xl font-black uppercase italic text-gray-900 tracking-tight">Duty Slots Editor</h3>
+              <div className="bg-white p-8 rounded-[3rem] border shadow-xl space-y-8">
                  {CATEGORIES.map(cat => (
-                  <div key={cat.id} className="border border-gray-100 rounded-[2.5rem] overflow-hidden group hover:border-blue-200 transition-all">
+                  <div key={cat.id} className="border border-gray-100 rounded-[2.5rem] overflow-hidden">
                     <div className={`px-6 py-4 font-black uppercase text-xs ${cat.color} flex justify-between items-center border-b`}>
                       <span>{cat.name}</span>
-                      <button onClick={() => setDraftSlots([...draftSlots, { id: `slot-${Date.now()}`, categoryId: cat.id, day: 'Monday', time: '8:00 am - 8:30 am', location: 'Hall', group: 'General', teacherIds: [] }])} className="bg-white/50 p-2 rounded-xl hover:bg-white/80 transition-colors"><Plus size={18} /></button>
+                      <button onClick={() => setDraftSlots([...draftSlots, { id: `s-${Date.now()}`, categoryId: cat.id, day: 'Monday', time: '8:00 am', location: 'Gate', group: 'All', teacherIds: [] }])} className="bg-white/50 p-2 rounded-xl hover:bg-white/70 transition-colors"><Plus size={18} /></button>
                     </div>
                     <div className="divide-y divide-gray-50">
                       {draftSlots.filter(s => s.categoryId === cat.id).map(slot => (
-                          <div key={slot.id} className="p-6 hover:bg-gray-50/50">
-                            <div className={`grid grid-cols-1 ${cat.id === 'arrival' ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4`}>
-                              <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase">Day</label>
-                                <select className="w-full text-xs font-black bg-gray-50 p-3 rounded-2xl border border-gray-100 focus:border-blue-400 outline-none" value={slot.day} onChange={(e) => setDraftSlots(draftSlots.map(s => s.id === slot.id ? {...s, day: e.target.value as Day} : s))}> {DAYS.map(d => <option key={d} value={d}>{d}</option>)} </select>
-                              </div>
-                              {cat.id === 'arrival' && (
-                                <div className="space-y-1">
-                                  <label className="text-[8px] font-black text-gray-400 uppercase">Date</label>
-                                  <input 
-                                    type="date" 
-                                    className="w-full text-xs font-black bg-gray-50 p-3 rounded-2xl border border-gray-100" 
-                                    value={slot.date || ''} 
-                                    onChange={(e) => {
-                                      const newDate = e.target.value;
-                                      const newDay = getDayFromDate(newDate);
-                                      setDraftSlots(draftSlots.map(s => s.id === slot.id ? {...s, date: newDate, day: newDay} : s));
-                                    }} 
-                                  />
-                                </div>
-                              )}
-                              <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase">Time</label>
-                                <input className="w-full text-xs font-black bg-gray-50 p-3 rounded-2xl border border-gray-100" value={slot.time} onChange={(e) => setDraftSlots(draftSlots.map(s => s.id === slot.id ? {...s, time: e.target.value} : s))} />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[8px] font-black text-gray-400 uppercase">Location</label>
-                                <input className="w-full text-xs font-black bg-gray-50 p-3 rounded-2xl border border-gray-100" value={slot.location} onChange={(e) => setDraftSlots(draftSlots.map(s => s.id === slot.id ? {...s, location: e.target.value} : s))} />
-                              </div>
-                              <div className="flex items-end">
-                                <button onClick={() => setDraftSlots(draftSlots.filter(s => s.id !== slot.id))} className="w-full p-3 text-red-500 font-black text-[10px] uppercase hover:bg-red-50 rounded-2xl transition-colors flex items-center justify-center gap-1"><Trash2 size={14}/> Delete</button>
-                              </div>
+                          <div key={slot.id} className="p-6 hover:bg-gray-50/50 transition-colors">
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+                               {cat.id === 'arrival' ? (
+                                 <div className="flex flex-col gap-1">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase">Tarikh Tugasan</label>
+                                    <input type="date" className="p-3 bg-blue-50 rounded-xl text-xs font-black border border-blue-100 outline-none focus:ring-2 ring-blue-300" value={slot.date || ''} onChange={(e) => {
+                                        const newDate = e.target.value;
+                                        const newDay = getDayFromDate(newDate);
+                                        setDraftSlots(draftSlots.map(ds => ds.id === slot.id ? {...ds, date: newDate, day: newDay} : ds));
+                                      }} 
+                                    />
+                                 </div>
+                               ) : (
+                                 <div className="flex flex-col gap-1">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase">Hari</label>
+                                    <select className="p-3 bg-gray-50 rounded-xl text-xs font-black border outline-none focus:ring-2 ring-blue-300" value={slot.day} onChange={(e) => setDraftSlots(draftSlots.map(ds => ds.id === slot.id ? {...ds, day: e.target.value as Day} : ds))}> {DAYS.map(d => <option key={d} value={d}>{d}</option>)} </select>
+                                 </div>
+                               )}
+                               <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] font-black text-gray-400 uppercase">Masa</label>
+                                  <input className="p-3 bg-gray-50 rounded-xl text-xs font-black border outline-none focus:ring-2 ring-blue-300" value={slot.time} onChange={(e) => setDraftSlots(draftSlots.map(ds => ds.id === slot.id ? {...ds, time: e.target.value} : ds))} />
+                               </div>
+                               <div className="flex flex-col gap-1">
+                                  <label className="text-[9px] font-black text-gray-400 uppercase">Lokasi</label>
+                                  <input className="p-3 bg-gray-50 rounded-xl text-xs font-black border outline-none focus:ring-2 ring-blue-300" value={slot.location} onChange={(e) => setDraftSlots(draftSlots.map(ds => ds.id === slot.id ? {...ds, location: e.target.value} : ds))} />
+                               </div>
+                               <div className="md:col-span-2 flex items-end justify-between">
+                                  <div className="flex flex-wrap gap-1"> 
+                                    {draftTeachers.sort((a,b) => a.name.localeCompare(b.name)).map(t => (
+                                      <button key={t.id} onClick={() => { 
+                                          const newIds = slot.teacherIds.includes(t.id) ? slot.teacherIds.filter(id => id !== t.id) : [...slot.teacherIds, t.id]; 
+                                          setDraftSlots(draftSlots.map(ds => ds.id === slot.id ? {...ds, teacherIds: newIds} : ds)) 
+                                        }} 
+                                        className={`px-2 py-1 rounded text-[8px] font-black border transition-all ${slot.teacherIds.includes(t.id) ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-400 hover:bg-gray-50'}`}
+                                      >
+                                        {t.name}
+                                      </button>
+                                    ))} 
+                                  </div>
+                                  <button onClick={() => setDraftSlots(draftSlots.filter(ds => ds.id !== slot.id))} className="text-red-500 p-2 hover:bg-red-100 rounded-xl transition-colors"><Trash2 size={18}/></button>
+                               </div>
                             </div>
-                            <div className="mt-4">
-                              <label className="text-[8px] font-black text-gray-400 uppercase mb-2 block">Assigned Teachers</label>
-                              <div className="flex flex-wrap gap-2">
-                                {draftTeachers.map(t => (
-                                  <button key={t.id} onClick={() => {
-                                    const newIds = slot.teacherIds.includes(t.id) ? slot.teacherIds.filter(id => id !== t.id) : [...slot.teacherIds, t.id];
-                                    setDraftSlots(draftSlots.map(s => s.id === slot.id ? {...s, teacherIds: newIds} : s));
-                                  }} className={`px-3 py-2 rounded-xl text-[9px] font-black transition-all ${slot.teacherIds.includes(t.id) ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-400 border border-gray-100 hover:bg-gray-50'}`}>{t.name}</button>
-                                ))}
-                              </div>
-                            </div>
+                            {cat.id === 'arrival' && slot.date && (
+                              <div className="text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-lg w-fit uppercase">Auto-Hari: {slot.day}</div>
+                            )}
                           </div>
                       ))}
                     </div>
@@ -884,13 +750,13 @@ try {
             )}
 
             {adminTab === 'teachers' && (
-              <div className="bg-white p-8 rounded-[3rem] border shadow-2xl space-y-6">
-                <div className="flex justify-between items-center"><h3 className="text-xl font-black uppercase text-gray-900 tracking-tight">Manage Teachers</h3><button onClick={() => { const name = prompt("Teacher Name:"); if(name) setDraftTeachers([...draftTeachers, { id: `t-${Date.now()}`, name: name.toUpperCase(), role: 'Teacher' }]) }} className="bg-blue-600 text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-blue-700 transition-all">+ New Teacher</button></div>
+              <div className="bg-white p-8 rounded-[3rem] border shadow-xl space-y-6">
+                <button onClick={() => { const name = prompt("Nama Guru:"); if(name) setDraftTeachers([...draftTeachers, { id: `t-${Date.now()}`, name: name.toUpperCase(), role: 'Teacher' }]) }} className="bg-blue-600 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase shadow-lg hover:bg-blue-700 transition-colors">+ New Teacher</button>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {draftTeachers.map(t => (
-                    <div key={t.id} className="p-4 bg-gray-50 rounded-2xl flex justify-between items-center border border-gray-100 group">
-                      <div><p className="text-xs font-black uppercase text-gray-900">{t.name}</p><p className="text-[9px] font-bold text-gray-400 uppercase">{t.role}</p></div>
-                      <button onClick={() => setDraftTeachers(draftTeachers.filter(teach => teach.id !== t.id))} className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
+                  {draftTeachers.sort((a,b) => a.name.localeCompare(b.name)).map(t => (
+                    <div key={t.id} className="p-4 bg-gray-50 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-blue-200 transition-all">
+                      <span className="text-xs font-black uppercase">{t.name}</span>
+                      <button onClick={() => { if(confirm(`Hapus ${t.name}?`)) setDraftTeachers(draftTeachers.filter(teach => teach.id !== t.id)) }} className="text-red-400 hover:text-red-600 p-2 transition-colors"><Trash2 size={18}/></button>
                     </div>
                   ))}
                 </div>
@@ -898,113 +764,144 @@ try {
             )}
 
             {adminTab === 'settings' && (
-              <div className="bg-white p-8 rounded-[3rem] border shadow-2xl space-y-8">
-                <h3 className="text-xl font-black uppercase italic text-gray-900">Design & Identity</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                   <div className="space-y-4">
-                      <div><label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">School Name</label><input type="text" className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border border-gray-100 outline-none focus:border-blue-400" value={draftSettings.schoolName} onChange={(e) => setDraftSettings({...draftSettings, schoolName: e.target.value})} /></div>
-                      <div><label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">Dashboard Title</label><input type="text" className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border border-gray-100 outline-none focus:border-blue-400" value={draftSettings.masterTitle} onChange={(e) => setDraftSettings({...draftSettings, masterTitle: e.target.value})} /></div>
-                      <div><label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">Dashboard Subtitle</label><input type="text" className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border border-gray-100 outline-none focus:border-blue-400" value={draftSettings.masterSubtitle} onChange={(e) => setDraftSettings({...draftSettings, masterSubtitle: e.target.value})} /></div>
-                      <div><label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">Admin Password</label><input type="text" className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border border-gray-100 outline-none focus:border-blue-400" value={draftSettings.adminPassword} onChange={(e) => setDraftSettings({...draftSettings, adminPassword: e.target.value})} /></div>
-                   </div>
-                   <div className="space-y-4">
-                      <div>
-                        <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">Music URL (Youtube Link)</label>
-                        <div className="flex gap-2">
-                          <input type="text" className="flex-1 p-4 bg-gray-50 rounded-2xl font-black text-xs border border-gray-100" placeholder="https://youtube.com/..." value={draftSettings.musicUrl} onChange={(e) => setDraftSettings({...draftSettings, musicUrl: e.target.value})} />
-                          <div className="w-12 h-12 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center border border-red-100"><MusicIcon size={20}/></div>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">School Logo</label>
-                        <div className="flex items-center gap-4">
-                           <div className="w-16 h-16 bg-gray-50 rounded-2xl border border-gray-100 overflow-hidden"><img src={draftSettings.logoUrl} className="w-full h-full object-contain" /></div>
-                           <input type="file" id="logo-upload" className="hidden" accept="image/*" onChange={async (e) => {
-                             const file = e.target.files?.[0];
-                             if (file) {
-                               const base64 = await resizeImage(file, 400);
-                               setDraftSettings({...draftSettings, logoUrl: base64});
-                             }
-                           }} />
-                           <label htmlFor="logo-upload" className="cursor-pointer bg-blue-50 text-blue-600 px-4 py-3 rounded-xl text-[9px] font-black uppercase border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2"><Upload size={14}/> Muat Naik Logo</label>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black uppercase text-gray-400 mb-2 block">Latar Belakang (Imej atau Video)</label>
-                        <input type="text" className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border border-gray-100 mb-3 outline-none focus:border-blue-400" placeholder="Pautan Imej atau Video URL" value={draftSettings.backgroundUrl} onChange={(e) => setDraftSettings({...draftSettings, backgroundUrl: e.target.value})} />
-                        <div className="flex items-center gap-4">
-                          <input type="file" id="bg-upload" className="hidden" accept="image/*" onChange={async (e) => {
-                             const file = e.target.files?.[0];
-                             if (file) {
-                               const base64 = await resizeImage(file, 1920); // Resolusi tinggi untuk latar belakang
-                               setDraftSettings({...draftSettings, backgroundUrl: base64});
-                             }
-                           }} />
-                          <label htmlFor="bg-upload" className="cursor-pointer bg-blue-50 text-blue-600 px-4 py-3 rounded-xl text-[9px] font-black uppercase border border-blue-100 hover:bg-blue-100 transition-all flex items-center gap-2"><Upload size={14}/> Muat Naik Imej Latar</label>
-                          <div className="text-[8px] font-bold text-gray-400 uppercase italic leading-none">* Pilih fail atau tampal pautan URL</div>
-                        </div>
-                      </div>
-                   </div>
+              <div className="bg-white p-8 rounded-[3rem] border shadow-xl space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div><label className="text-[10px] font-black uppercase text-gray-400 block mb-2">School Name</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border focus:ring-2 ring-blue-300 outline-none" value={draftSettings.schoolName} onChange={(e) => setDraftSettings({...draftSettings, schoolName: e.target.value})} /></div>
+                  <div><label className="text-[10px] font-black uppercase text-gray-400 block mb-2">Admin Password</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border focus:ring-2 ring-blue-300 outline-none" value={draftSettings.adminPassword} onChange={(e) => setDraftSettings({...draftSettings, adminPassword: e.target.value})} /></div>
+                  
+                  <div><label className="text-[10px] font-black uppercase text-gray-400 block mb-2">Master Title (Dashboard)</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border focus:ring-2 ring-blue-300 outline-none" value={draftSettings.masterTitle} onChange={(e) => setDraftSettings({...draftSettings, masterTitle: e.target.value})} placeholder="e.g. DUTY MASTER" /></div>
+                  <div><label className="text-[10px] font-black uppercase text-gray-400 block mb-2">Master Subtitle (Dashboard)</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border focus:ring-2 ring-blue-300 outline-none" value={draftSettings.masterSubtitle} onChange={(e) => setDraftSettings({...draftSettings, masterSubtitle: e.target.value})} placeholder="e.g. GROUP B" /></div>
+
+                  <div className="relative">
+                    <label className="text-[10px] font-black uppercase text-gray-400 block mb-2">Music (YouTube URL)</label>
+                    <div className="flex gap-2">
+                      <input className="flex-1 p-4 bg-gray-50 rounded-2xl font-black text-xs border focus:ring-2 ring-blue-300 outline-none" value={draftSettings.musicUrl} onChange={(e) => setDraftSettings({...draftSettings, musicUrl: e.target.value})} placeholder="https://youtube.com/..." />
+                      <button onClick={() => { setIsMusicPlaying(true); alert("Mencuba memainkan musik..."); }} className="p-4 bg-blue-100 text-blue-600 rounded-2xl hover:bg-blue-200 transition-colors" title="Test Audio"><Volume2 size={20}/></button>
+                    </div>
+                  </div>
+                  <div><label className="text-[10px] font-black uppercase text-gray-400 block mb-2">Background URL (Image or Direct MP4)</label><input className="w-full p-4 bg-gray-50 rounded-2xl font-black text-xs border focus:ring-2 ring-blue-300 outline-none" value={draftSettings.backgroundUrl} onChange={(e) => setDraftSettings({...draftSettings, backgroundUrl: e.target.value})} /></div>
+                  
+                  <div className="md:col-span-2">
+                    <label className="text-[10px] font-black uppercase text-gray-400 block mb-2">School Logo</label>
+                    <div className="flex items-center gap-4">
+                      <img src={draftSettings.logoUrl} className="w-20 h-20 object-contain bg-gray-50 rounded-2xl border" />
+                      <input type="file" className="text-[10px]" onChange={async (e) => { const file = e.target.files?.[0]; if(file) { const b64 = await resizeImage(file, 400); setDraftSettings({...draftSettings, logoUrl: b64}); } }} />
+                    </div>
+                  </div>
                 </div>
+              </div>
+            )}
+            
+            {hasUnsavedChanges && (
+              <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] animate-fadeIn">
+                <button 
+                  onClick={handleApplyChanges} 
+                  className="bg-gray-900 text-white px-12 py-6 rounded-[3rem] font-black uppercase shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 hover:scale-105 active:scale-95 transition-all border-2 border-white/20"
+                >
+                  {isCloudLoading ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />} 
+                  {isCloudLoading ? 'SEDANG MENYIMPAN...' : 'SIMPAN KE ARMADA'}
+                </button>
               </div>
             )}
           </div>
         )}
 
         {activeView === 'admin' && !isAdminAuthenticated && (
-          <div className="max-w-md mx-auto bg-white p-12 rounded-[3.5rem] shadow-2xl border-4 border-blue-600 text-center animate-fadeIn relative overflow-hidden">
-            <div className="w-20 h-20 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-xl relative z-10"><Lock size={40} /></div>
-            <h2 className="text-3xl font-black mb-8 italic uppercase text-gray-900 tracking-tight relative z-10">Admin Login</h2>
-            <form onSubmit={handleAdminLogin} className="space-y-4 relative z-10">
+          <div className="max-w-md mx-auto bg-white p-12 rounded-[3.5rem] shadow-2xl border-4 border-blue-600 text-center animate-fadeIn mt-12">
+            <div className="w-20 h-20 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-xl"><Lock size={40} /></div>
+            <h3 className="text-4xl font-black mb-8 italic uppercase text-gray-900">أَهْلًا وَسَهْلًا</h3>
+            <form onSubmit={handleAdminLogin} className="space-y-4">
               <input type="password" className={`w-full p-5 bg-gray-50 border-2 ${loginError ? 'border-red-500' : 'border-gray-100'} rounded-[2rem] font-black outline-none text-center focus:border-blue-500 transition-all`} placeholder="PASSWORD" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} />
-              {loginError && <p className="text-red-500 text-[10px] font-black uppercase">Wrong Password!</p>}
               <button type="submit" className="w-full bg-blue-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg hover:bg-blue-700 active:scale-95 transition-all">Verify Identity</button>
             </form>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16"></div>
+            <p className="mt-6 text-[10px] font-bold text-gray-400 uppercase tracking-widest">SILA MASUKKAN KATA LALUAN</p>
           </div>
         )}
       </main>
 
+      {/* Welcome Modal */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-xl flex items-center justify-center p-6 animate-fadeIn">
+          <div className="bg-white max-w-xl w-full rounded-[4rem] shadow-2xl text-center relative overflow-hidden border border-gray-100">
+            <div className="bg-blue-600 h-32 flex items-center justify-center"><Sparkles size={48} className="text-white animate-pulse" /></div>
+            <div className="p-10 space-y-8">
+              <div className="space-y-2">
+                <h2 className="text-1xl font-black uppercase italic tracking-tight text-gray-900 leading-none">SELAMAT DATANG KE</h2>
+                <h2 className="text-2xl font-black uppercase text-blue-600 tracking-tighter">DUTY DISMISSAL GROUP B</h2>
+              </div>
+              <div className="poem-container bg-blue-50/50 p-6 rounded-3xl border border-blue-100/50 relative">
+                <div className="absolute top-0 left-0 p-2 text-blue-200"><Quote size={32} /></div>
+                <p className="text-gray-600 font-black italic leading-relaxed text-sm">"Sir Akmal datang membawa berita,"</p>
+                <p className="text-gray-600 font-black italic leading-relaxed text-sm">"Jadual disusun rapi dan nyata,"</p>
+                <p className="text-gray-600 font-black italic leading-relaxed text-sm">"Tugasan dipikul sepenuh jiwa,"</p>
+                <p className="text-gray-600 font-black italic leading-relaxed text-sm">"Demi anak bangsa, kita berjasa."</p>
+              </div>
+              <div className="relative">
+                 <div className={`p-6 rounded-[2.5rem] border flex flex-col gap-4 transition-all shadow-xl ${dutyInfo.isWorkingThisWeek ? 'bg-green-600 border-green-700 text-white' : 'bg-red-600 border-red-700 text-white'}`}>
+                    <div className="flex items-center gap-5">
+                      <div className="p-4 rounded-2xl bg-white/20 text-white shadow-lg">
+                        {dutyInfo.isWorkingThisWeek ? <CheckCircle2 size={28} /> : <Info size={28} />}
+                      </div>
+                      <div className="text-left">
+                        <p className="text-[11px] font-black uppercase opacity-90 leading-none mb-1">KITA BERTUGAS HARI INI?:</p>
+                        <h4 className="text-xl font-black uppercase italic leading-none">
+                          {dutyInfo.isWorkingThisWeek ? `${settings.masterSubtitle} BERTUGAS` : `${settings.masterSubtitle} TAK BERTUGAS`}
+                        </h4>
+                        {dutyInfo.hasArrivalData && (
+                          <p className="text-[10px] font-bold opacity-80 uppercase mt-2 tracking-wider">
+                            TEMPOH: {dutyInfo.startDate} — {dutyInfo.endDate}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                 </div>
+              </div>
+              <button onClick={() => setShowWelcome(false)} className="w-full bg-blue-600 text-white p-6 rounded-[2rem] font-black uppercase shadow-2xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-3 text-lg">MULA BERTUGAS <Sparkles size={20} /></button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Bot */}
+      <button onClick={() => setIsChatOpen(!isChatOpen)} className="fixed bottom-6 right-6 z-[101] w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all group no-print">
+        {isChatOpen ? <X size={28} /> : <MessageSquare size={28} />}
+      </button>
+
+      {/* Chat Window */}
       <div className={`fixed bottom-4 right-4 z-[100] transition-all duration-300 transform ${isChatOpen ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-90 pointer-events-none'}`}>
         <div className="w-[320px] sm:w-[380px] h-[500px] bg-white/90 backdrop-blur-xl rounded-[3rem] shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
           <div className="bg-blue-600 p-6 text-white flex items-center justify-between shadow-lg">
             <div className="flex items-center gap-3">
               <div className="bg-white/20 p-2 rounded-xl"><Bot size={24} /></div>
-              <div><h4 className="text-xs font-black uppercase italic tracking-tighter">SIR AKMAL AI</h4><div className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span><span className="text-[8px] font-black uppercase opacity-80">Online</span></div></div>
+              <div><h4 className="text-xs font-black uppercase italic tracking-tighter">SIR AKMAL AI</h4></div>
             </div>
-            <button onClick={() => setIsChatOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors"><X size={20} /></button>
           </div>
-          <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50/30 no-scrollbar">
+          <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50/30">
             {chatMessages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] p-4 rounded-[1.5rem] text-[11px] leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white font-bold' : 'bg-white text-gray-700 border border-gray-100 font-bold'}`}>{msg.text}</div>
               </div>
             ))}
             {isAiLoading && <div className="flex justify-start"><div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex gap-1"><span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"></span><span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:0.2s]"></span><span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:0.4s]"></span></div></div>}
-            <div ref={chatEndRef} />
           </div>
           <form onSubmit={handleSendMessage} className="p-4 bg-white border-t border-gray-100 flex gap-2">
-            <input type="text" placeholder="Tanya tentang jadual..." className="flex-1 bg-gray-50 p-4 rounded-2xl text-[11px] font-bold outline-none focus:bg-white focus:ring-2 ring-blue-100 transition-all" value={userInput} onChange={(e) => setUserInput(e.target.value)} />
-            <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg hover:bg-blue-700 transition-all" disabled={isAiLoading}><Send size={18} /></button>
+            <input type="text" placeholder="Tanya tentang jadual..." className="flex-1 bg-gray-50 p-4 rounded-2xl text-[11px] font-bold outline-none" value={userInput} onChange={(e) => setUserInput(e.target.value)} />
+            <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg hover:bg-blue-700" disabled={isAiLoading}><Send size={18} /></button>
           </form>
         </div>
       </div>
 
-      <button onClick={() => setIsChatOpen(!isChatOpen)} className="fixed bottom-6 right-6 z-[101] w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all group no-print">
-        {isChatOpen ? <X size={28} /> : <MessageSquare size={28} />}
-        {!isChatOpen && <span className="absolute -top-1 -right-1 flex h-5 w-5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span className="relative inline-flex rounded-full h-5 w-5 bg-blue-500 flex items-center justify-center text-[9px] font-black">SIR</span></span>}
-      </button>
-
-      {isAdminAuthenticated && hasUnsavedChanges && activeView === 'admin' && (
-        <div className="fixed bottom-0 left-0 right-0 z-[110] p-6 no-print">
-          <div className="max-w-4xl mx-auto bg-gray-900/95 backdrop-blur-xl text-white p-6 rounded-[3rem] shadow-2xl flex items-center justify-between border border-white/10 ring-1 ring-blue-500/50 animate-fadeIn">
-            <div className="flex items-center gap-4"><AlertCircle size={24} className="text-amber-500 animate-pulse" /><div><p className="text-xs font-black uppercase italic text-amber-500">Unsaved Changes!</p><p className="text-[9px] text-gray-400 font-bold uppercase">Sync to Cloud for all devices</p></div></div>
-            <button onClick={handleApplyChanges} className="bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-2xl text-xs font-black uppercase flex items-center gap-2 shadow-xl transition-all"><Save size={20} /> SYNC CLOUD</button>
+      {isGeneratingPdf && (
+        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fadeIn">
+          <div className="bg-white p-10 rounded-[4rem] shadow-2xl flex flex-col items-center gap-6">
+            <div className="p-4 bg-blue-50 rounded-full animate-spin"><RefreshCw size={48} className="text-blue-600" /></div>
+            <h3 className="text-xl font-black uppercase italic tracking-tight text-gray-900 text-center">BISMILLAH<br/>
+            <span className="text-[10px] font-normal lowercase tracking-normal">Sabar itu indah, Sir Akmal sedang usahakan</span></h3>
           </div>
         </div>
       )}
 
-      <footer className="relative z-10 text-center py-10 opacity-30 no-print"><p className="text-[8px] font-black uppercase tracking-[0.4em] text-gray-900">{settings.schoolName} {settings.masterTitle} v7.5</p></footer>
+      <footer className="relative z-10 text-center py-10 opacity-30 no-print"><p className="text-[8px] font-black uppercase tracking-[0.4em] text-gray-900">{settings.schoolName} {settings.masterTitle} v9.8</p></footer>
     </div>
   );
 };

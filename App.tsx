@@ -610,7 +610,7 @@ const App: React.FC = () => {
                     </div>
 
                     <button onClick={downloadTeacherPdf} disabled={isGeneratingPdf} className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white p-5 rounded-3xl font-black text-xs uppercase shadow-xl hover:bg-blue-700 active:scale-95 transition-all">
-                      {isGeneratingPdf ? <Loader2 className="animate-spin" size={18} /> : <FileText size={18} />} {isGeneratingPdf ? 'Pdf' : 'Download PDF'}
+                      {isGeneratingPdf ? <Loader2 className="animate-spin" size={18} /> : <FileText size={18} />} {isGeneratingPdf ? 'Wait...' : 'Download PDF'}
                     </button>
                   </div>
                 )}
@@ -809,7 +809,7 @@ const App: React.FC = () => {
         {activeView === 'admin' && !isAdminAuthenticated && (
           <div className="max-w-md mx-auto bg-white p-12 rounded-[3.5rem] shadow-2xl border-4 border-blue-600 text-center animate-fadeIn mt-12">
             <div className="w-20 h-20 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-xl"><Lock size={40} /></div>
-            <h3 className="text-4xl font-black mb-8 italic uppercase text-gray-900">أَهْلًا وَسَهْلًا</h3>
+            <h2 className="text-3xl font-black mb-8 italic uppercase text-gray-900">Admin Login</h2>
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <input type="password" className={`w-full p-5 bg-gray-50 border-2 ${loginError ? 'border-red-500' : 'border-gray-100'} rounded-[2rem] font-black outline-none text-center focus:border-blue-500 transition-all`} placeholder="PASSWORD" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} />
               <button type="submit" className="w-full bg-blue-600 text-white p-5 rounded-[2rem] font-black uppercase shadow-lg hover:bg-blue-700 active:scale-95 transition-all">Verify Identity</button>
@@ -827,14 +827,14 @@ const App: React.FC = () => {
             <div className="p-10 space-y-8">
               <div className="space-y-2">
                 <h2 className="text-1xl font-black uppercase italic tracking-tight text-gray-900 leading-none">SELAMAT DATANG KE</h2>
-                <h2 className="text-2xl font-black uppercase text-blue-600 tracking-tighter">DUTY DISMISSAL GROUP B</h2>
+                <h3 className="text-2xl font-black uppercase text-blue-600 tracking-tighter">DUTY DISMISSAL GROUP B</h3>
               </div>
-              <div className="poem-container bg-blue-50/50 p-6 rounded-3xl border border-blue-100/50 relative">
+              <div className="poem-container bg-blue-50/50 p-6 rounded-2xl border border-blue-100/50 relative">
                 <div className="absolute top-0 left-0 p-2 text-blue-200"><Quote size={32} /></div>
-                <p className="text-gray-600 font-black italic leading-relaxed text-sm">"Sir Akmal datang membawa berita,"</p>
-                <p className="text-gray-600 font-black italic leading-relaxed text-sm">"Jadual disusun rapi dan nyata,"</p>
-                <p className="text-gray-600 font-black italic leading-relaxed text-sm">"Tugasan dipikul sepenuh jiwa,"</p>
-                <p className="text-gray-600 font-black italic leading-relaxed text-sm">"Demi anak bangsa, kita berjasa."</p>
+                <p className="text-gray-700 font-black italic leading-relaxed text-sm">"Sir Akmal datang membawa berita,"</p>
+                <p className="text-gray-700 font-black italic leading-relaxed text-sm">"Jadual disusun rapi dan nyata,"</p>
+                <p className="text-gray-700 font-black italic leading-relaxed text-sm">"Tugasan dipikul sepenuh jiwa,"</p>
+                <p className="text-gray-700 font-black italic leading-relaxed text-sm">"Demi anak bangsa, kita berjasa."</p>
               </div>
               <div className="relative">
                  <div className={`p-6 rounded-[2.5rem] border flex flex-col gap-4 transition-all shadow-xl ${dutyInfo.isWorkingThisWeek ? 'bg-green-600 border-green-700 text-white' : 'bg-red-600 border-red-700 text-white'}`}>
@@ -843,9 +843,9 @@ const App: React.FC = () => {
                         {dutyInfo.isWorkingThisWeek ? <CheckCircle2 size={28} /> : <Info size={28} />}
                       </div>
                       <div className="text-left">
-                        <p className="text-[11px] font-black uppercase opacity-90 leading-none mb-1">KITA BERTUGAS HARI INI?:</p>
+                        <p className="text-[11px] font-black uppercase opacity-90 leading-none mb-1">STATUS TUGASAN:</p>
                         <h4 className="text-xl font-black uppercase italic leading-none">
-                          {dutyInfo.isWorkingThisWeek ? `${settings.masterSubtitle} BERTUGAS` : `${settings.masterSubtitle} TAK BERTUGAS`}
+                          {dutyInfo.isWorkingThisWeek ? `${settings.masterSubtitle} SEDANG BERTUGAS` : `${settings.masterSubtitle} TAK BERTUGAS`}
                         </h4>
                         {dutyInfo.hasArrivalData && (
                           <p className="text-[10px] font-bold opacity-80 uppercase mt-2 tracking-wider">
